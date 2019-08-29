@@ -5,6 +5,9 @@ import time
 import os
 import sys
 
+storage_path = './results'
+os.makedirs(storage_path, exist_ok=True)
+
 test_X = np.load('test_features_rnn.npy')
 print("Test Features: ",test_X.shape)
 test_Y = np.load('test_labels_rnn.npy')
@@ -18,12 +21,12 @@ print("Train Labels: ",train_Y.shape)
 learning_rate = 0.00025
 training_iters = 35000
 batch_size = 150
-display_step = 1
+display_step = 50
 
-n_input = 26
-n_steps = 32
+n_input = train_X.shape[2]
+n_steps = train_X.shape[1]
 n_hidden = 100
-n_classes = 30
+n_classes = train_Y.shape[1]
 dropout = 0.5
 
 x = tf.placeholder("float", [None, n_steps, n_input])
@@ -52,7 +55,7 @@ def RNN(_x, weight, bias):
     #output = tf.transpose(output, [1, 0, 2])
     #last = tf.gather(output, (int)(output.get_shape()[0]) - 1)
     last = output[-1]
-    return (tf.matmul(last, weight) + bias)
+    return tf.matmul(last, weight) + bias
 
 prediction = RNN(x, weight, bias)
 
@@ -86,8 +89,8 @@ with tf.Session() as session:
                   "{}".format(loss) + ", Training Accuracy= " + \
                   "{}".format(acc))
         if itr % 1000 == 0:
-            saver.save(session,'C:\\Users\\Shivank\\Desktop\\RnnSpeech\\model_rnn')
+            saver.save(session,os.path.join(storage_path, 'model_rnn'+ str(itr)))
 
     print('Test accuracy: ',session.run(accuracy, feed_dict={x: test_X, y: test_Y}))
     print('Train accuracy: ',session.run(accuracy, feed_dict={x: train_X, y: train_Y}))
-    saver.save(session,'C:\\Users\\Shivank\\Desktop\\RnnSpeech\\final_model_rnn')
+    saver.save(session,os.path.join(storage_path, 'final_model_rnn'))
