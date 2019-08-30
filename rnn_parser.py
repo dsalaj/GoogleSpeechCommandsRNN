@@ -9,7 +9,7 @@ from statsmodels.tools import categorical
 nb_classes = 30
 n_mfcc=26
 
-dataset_path = '/calc/SHARED/speech_commands_v0.01'
+dataset_path = '/calc/SHARED/speech_commands_v0.02'
 validation_list = [line.rstrip('\n') for line in open(os.path.join(dataset_path, 'validation_list.txt'))]
 testing_list = [line.rstrip('\n') for line in open(os.path.join(dataset_path, 'testing_list.txt'))]
 
@@ -34,8 +34,8 @@ def extract_features(root, group):
     labels = []
     features = []
     i=0
+    maxs = []
     max_len = 0
-    print(os.path.basename(root))
     for path, subdirs, files in os.walk(root):
         for file_name in files:
             full_path = os.path.join(path, file_name)
@@ -43,15 +43,22 @@ def extract_features(root, group):
                 name = full_path[len(root)+1:full_path.rfind('/')]
                 if not in_group(os.path.join(name, file_name), group):
                     continue
-                files.append(full_path)
-                labels.append(name)
-
                 # sample_rate, sample = wavfile.read(full_path)
                 sample, sample_rate = librosa.load(full_path)
 
                 mfccs = librosa.feature.mfcc(y=sample, sr=sample_rate, n_mfcc=n_mfcc)
                 # print(mfccs.shape)  # (n_mfcc, len)
                 length = mfccs.shape[1]
+                if length > max_len:
+                    maxs.append(length)
+                if length > 44:
+                    print("Length longer then 44 !!!! SKIPPING")
+                    print(full_path, name, mfccs.shape)
+                    continue
+                    
+                files.append(full_path)
+                labels.append(name)
+
                 max_len = length if length > max_len else max_len
                 mfccs = np.transpose(mfccs)
                 features.append(mfccs)
@@ -61,8 +68,7 @@ def extract_features(root, group):
     for idx, mfcc in enumerate(features):
         mfccs = np.lib.pad(mfccs,((0,max_len-mfccs.shape[0]),(0,0)), mode = 'constant', constant_values=0) # ( max_len, n_mfccs )
         features[idx] = mfccs
-    print("num of sequences", i)
-    print("max_len", max_len)
+    print(group, "MAXS =", maxs)
     return np.array(features), np.asarray(labels)
 
 def one_hot_encode(labels):
@@ -72,25 +78,25 @@ def one_hot_encode(labels):
 
 val_features, val_labels = extract_features(root=dataset_path, group="validation")
 val_labels = one_hot_encode(val_labels)
-
-np.save('valid_features_rnn', val_features)
-print('rnn features saved: ',val_features.shape)
+filelabel = 'features_rnn2'
+np.save('valid_'+filelabel, val_features)
+print('VALID rnn features saved: ',val_features.shape)
 np.save('valid_labels_rnn', val_labels)
-print('labels saved: ', val_labels.shape)
+print('VALID labels saved: ', val_labels.shape)
 
 ts_features, ts_labels = extract_features(root=dataset_path, group="test")
 ts_labels = one_hot_encode(ts_labels)
 
-np.save('test_features_rnn', ts_features)
-print('rnn features saved: ', ts_features.shape)
+np.save('test_'+filelabel, ts_features)
+print('TEST rnn features saved: ', ts_features.shape)
 np.save('test_labels_rnn', ts_labels)
-print('rnn labels saved: ', ts_labels.shape)
+print('TEST rnn labels saved: ', ts_labels.shape)
 
 tr_features, tr_labels = extract_features(root=dataset_path, group="train")
 tr_labels = one_hot_encode(tr_labels)
 
-np.save('train_features_rnn', tr_features)
-print('rnn features saved: ',tr_features.shape)
+np.save('train_'+filelabel, tr_features)
+print('TRAIN rnn features saved: ',tr_features.shape)
 np.save('train_labels_rnn', tr_labels)
-print('labels saved: ', tr_labels.shape)
+print('TRAIN labels saved: ', tr_labels.shape)
 

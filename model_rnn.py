@@ -8,11 +8,12 @@ import sys
 storage_path = './results'
 os.makedirs(storage_path, exist_ok=True)
 
-test_X = np.load('test_features_rnn.npy')
+filelabel = 'features_rnn2'
+test_X = np.load('test_'+filelabel+'.npy')
 print("Test Features: ",test_X.shape)
 test_Y = np.load('test_labels_rnn.npy')
 print("Test Labels: ",test_Y.shape)
-train_X = np.load('train_features_rnn.npy')
+train_X = np.load('train_'+filelabel+'.npy')
 print("Train Features: ",train_X.shape)
 train_Y = np.load('train_labels_rnn.npy')
 print("Train Labels: ",train_Y.shape)
