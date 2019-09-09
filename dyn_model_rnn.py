@@ -8,14 +8,14 @@ import sys
 storage_path = './results'
 os.makedirs(storage_path, exist_ok=True)
 
-filelabel = 'features_rnn2'
-test_X = np.load('test_'+filelabel+'.npy')
+filelabel = 'rnn'
+test_X = np.load('test_features_'+filelabel+'.npy')
 print("Test Features: ",test_X.shape)
-test_Y = np.load('test_labels_rnn.npy')
+test_Y = np.load('test_labels_'+filelabel+'.npy')
 print("Test Labels: ",test_Y.shape)
-train_X = np.load('train_'+filelabel+'.npy')
+train_X = np.load('train_features_'+filelabel+'.npy')
 print("Train Features: ",train_X.shape)
-train_Y = np.load('train_labels_rnn.npy')
+train_Y = np.load('train_labels_'+filelabel+'.npy')
 print("Train Labels: ",train_Y.shape)
 #sys.exit()
 
@@ -28,14 +28,14 @@ train_X, train_Y = unison_shuffled_copies(train_X, train_Y)
 
 learning_rate = 0.00025
 training_iters = 35000
-batch_size = 512
-display_step = 10
+batch_size = 1024
+display_step = 100
 
 n_input = train_X.shape[2]
 n_steps = train_X.shape[1]
-n_hidden = 100
+n_hidden = 128
 n_classes = train_Y.shape[1]
-dropout = 0.5
+dropout_keep = 0.5
 print("n_input =", n_input)
 print("n_steps = time =", n_steps)
 print("n_classes =", n_classes)
@@ -50,23 +50,14 @@ weight_h = tf.Variable(tf.random_normal([n_input, n_hidden]))
 bias_h = tf.Variable(tf.random_normal([n_hidden]))
 
 def RNN(_x, weight, bias):
-
-    # _x = tf.transpose(_x, [1, 0, 2])
-    # _x = tf.reshape(_x, [-1, n_input])
-
     _x = tf.nn.relu(tf.einsum('bti,ij->btj', _x, weight_h) + bias_h)
-    # _x = tf.split(_x, n_steps, 0)
-
-    cell_1 = tf.nn.rnn_cell.LSTMCell(n_hidden, state_is_tuple = True)
-    cell_2 = tf.nn.rnn_cell.LSTMCell(n_hidden, state_is_tuple = True)
-    #cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob = dropout)
-    cell = tf.nn.rnn_cell.MultiRNNCell([cell_1, cell_2], state_is_tuple = True)
-    # output, state = tf.nn.static_rnn(cell, _x, dtype = tf.float32)
+    cell_1 = tf.nn.rnn_cell.LSTMCell(n_hidden)
+    cell_2 = tf.nn.rnn_cell.LSTMCell(n_hidden)
+    cell = tf.nn.rnn_cell.MultiRNNCell([cell_1, cell_2])
+    cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=dropout_keep)
     output, state = tf.nn.dynamic_rnn(cell, _x, dtype = tf.float32)
-    # output = tf.Print(output, [tf.shape(output)], message="output shape")  # (batch, time, neurons)
 
     output = tf.transpose(output, [1, 0, 2])  # (time, batch, neurons)
-    #last = tf.gather(output, (int)(output.get_shape()[0]) - 1)
     last = output[-1]
     return tf.matmul(last, weight) + bias
 
@@ -101,7 +92,9 @@ with tf.Session() as session:
             print ("Iter " + str(itr) + ", Minibatch Loss= " + \
                   "{}".format(loss) + ", Training Accuracy= " + \
                   "{}".format(acc))
-        if itr % 1000 == 0:
+        if itr % n_train_batch == 0:
+            print("Finished epoch " + str(itr//n_train_batch) + ' -> reshuffling')
+            train_X, train_Y = unison_shuffled_copies(train_X, train_Y)
             saver.save(session,os.path.join(storage_path, 'model_rnn'+ str(itr)))
 
     print('Test accuracy: ',session.run(accuracy, feed_dict={x: test_X, y: test_Y}))

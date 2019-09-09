@@ -39,22 +39,19 @@ def extract_features(root, group):
     for path, subdirs, files in os.walk(root):
         for file_name in files:
             full_path = os.path.join(path, file_name)
-            if fnmatch(file_name, '*.wav') and full_path not in files:
+            if '_background_noise_' not in full_path and fnmatch(file_name, '*.wav') and full_path not in files:
                 name = full_path[len(root)+1:full_path.rfind('/')]
                 if not in_group(os.path.join(name, file_name), group):
                     continue
                 # sample_rate, sample = wavfile.read(full_path)
                 sample, sample_rate = librosa.load(full_path)
 
-                mfccs = librosa.feature.mfcc(y=sample, sr=sample_rate, n_mfcc=n_mfcc)
+                mfccs = librosa.feature.mfcc(y=sample, sr=sample_rate, n_mfcc=n_mfcc,
+                                             n_fft=2048, hop_length=256)
                 # print(mfccs.shape)  # (n_mfcc, len)
                 length = mfccs.shape[1]
                 if length > max_len:
                     maxs.append(length)
-                if length > 44:
-                    print("Length longer then 44 !!!! SKIPPING")
-                    print(full_path, name, mfccs.shape)
-                    continue
                     
                 files.append(full_path)
                 labels.append(name)
@@ -78,25 +75,25 @@ def one_hot_encode(labels):
 
 val_features, val_labels = extract_features(root=dataset_path, group="validation")
 val_labels = one_hot_encode(val_labels)
-filelabel = 'features_rnn2'
-np.save('valid_'+filelabel, val_features)
+filelabel = 'rnn'
+np.save('valid_features_'+filelabel, val_features)
 print('VALID rnn features saved: ',val_features.shape)
-np.save('valid_labels_rnn', val_labels)
+np.save('valid_labels_'+filelabel, val_labels)
 print('VALID labels saved: ', val_labels.shape)
 
 ts_features, ts_labels = extract_features(root=dataset_path, group="test")
 ts_labels = one_hot_encode(ts_labels)
 
-np.save('test_'+filelabel, ts_features)
+np.save('test_features_'+filelabel, ts_features)
 print('TEST rnn features saved: ', ts_features.shape)
-np.save('test_labels_rnn', ts_labels)
+np.save('test_labels_'+filelabel, ts_labels)
 print('TEST rnn labels saved: ', ts_labels.shape)
 
 tr_features, tr_labels = extract_features(root=dataset_path, group="train")
 tr_labels = one_hot_encode(tr_labels)
 
-np.save('train_'+filelabel, tr_features)
+np.save('train_features_'+filelabel, tr_features)
 print('TRAIN rnn features saved: ',tr_features.shape)
-np.save('train_labels_rnn', tr_labels)
+np.save('train_labels_'+filelabel, tr_labels)
 print('TRAIN labels saved: ', tr_labels.shape)
 

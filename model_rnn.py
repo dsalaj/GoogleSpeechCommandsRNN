@@ -8,7 +8,7 @@ import sys
 storage_path = './results'
 os.makedirs(storage_path, exist_ok=True)
 
-filelabel = 'features_rnn2'
+filelabel = 'features_rnn'
 test_X = np.load('test_'+filelabel+'.npy')
 print("Test Features: ",test_X.shape)
 test_Y = np.load('test_labels_rnn.npy')
@@ -19,7 +19,7 @@ train_Y = np.load('train_labels_rnn.npy')
 print("Train Labels: ",train_Y.shape)
 #sys.exit()
 
-learning_rate = 0.00025
+learning_rate = 0.001
 training_iters = 35000
 batch_size = 150
 display_step = 50
