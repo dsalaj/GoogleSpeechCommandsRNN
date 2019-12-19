@@ -200,7 +200,7 @@ def main(_):
 
   saver = tf.compat.v1.train.Saver(tf.compat.v1.global_variables())
 
-  # Merge all the summaries and write them out to /tmp/retrain_logs (by default)
+  # Merge all the summaries and write them out to results/retrain_logs (by default)
   merged_summaries = tf.compat.v1.summary.merge_all(scope='eval')
   train_writer = tf.compat.v1.summary.FileWriter(FLAGS.summaries_dir + '/train',
                                                  sess.graph)
@@ -485,12 +485,12 @@ if __name__ == '__main__':
   parser.add_argument(
       '--n_layer',
       type=int,
-      default=2,
+      default=1,
       help='Number of stacked layers in recurrent models.')
   parser.add_argument(
       '--dropout_prob',
       type=float,
-      default=0.5,
+      default=0.4,
       help='Dropoout probability for recurrent models.',)
 
   # Function used to parse --verbosity argument
@@ -524,7 +524,7 @@ if __name__ == '__main__':
       '--optimizer',
       type=str,
       default='gradient_descent',
-      help='Optimizer (gradient_descent or momentum)')
+      help='Optimizer (gradient_descent, momentum, adam)')
 
   FLAGS, unparsed = parser.parse_known_args()
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
