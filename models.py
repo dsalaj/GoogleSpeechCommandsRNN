@@ -23,6 +23,8 @@ import math
 
 import tensorflow as tf
 
+from spiking_models import exp_convolve, KerasALIF
+
 
 def _next_power_of_two(x):
   """Calculates the smallest enclosing power of two for an input.
@@ -129,6 +131,8 @@ def create_model(fingerprint_input, model_settings, model_architecture,
   if model_architecture == 'single_fc':
     return create_single_fc_model(fingerprint_input, model_settings,
                                   is_training)
+  elif model_architecture == 'lsnn':
+    return create_lsnn_model(fingerprint_input, model_settings, is_training)
   elif model_architecture == 'lstm':
     return create_lstm_model(fingerprint_input, model_settings, is_training)
   elif model_architecture == 'conv':
@@ -333,7 +337,6 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
 
 
 def create_lstm_model(fingerprint_input, model_settings, is_training):
-    print("--------------------------- Creating LSTM model ---------------------------")
     if is_training:
         dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['fingerprint_width']
@@ -344,9 +347,46 @@ def create_lstm_model(fingerprint_input, model_settings, is_training):
                                       dropout=model_settings['dropout_prob'],
                                       recurrent_dropout=model_settings['dropout_prob'])
              for _ in range(model_settings['n_layer'])]
-    # outputs_forward, _ = tf.nn.dynamic_rnn(cell, fingerprint_3d, dtype=tf.float32, scope='fwRNN', swap_memory=True)
     rnn_layer = tf.keras.layers.RNN(cells, return_sequences=False, return_state=False)
     rnn_output = rnn_layer(fingerprint_3d, training=is_training)
+
+    label_count = model_settings['label_count']
+    final_fc_weights = tf.compat.v1.get_variable(
+        name='final_fc_weights',
+        initializer=tf.compat.v1.truncated_normal_initializer(stddev=0.01),
+        shape=[model_settings['n_hidden'], label_count])
+    final_fc_bias = tf.compat.v1.get_variable(
+        name='final_fc_bias',
+        initializer=tf.compat.v1.zeros_initializer,
+        shape=[label_count])
+    final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
+
+    if is_training:
+        return final_fc, dropout_prob
+    else:
+        return final_fc
+
+
+def create_lsnn_model(fingerprint_input, model_settings, is_training):
+    import numpy as np
+    if is_training:
+        dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
+    input_frequency_size = model_settings['fingerprint_width']
+    input_time_size = model_settings['spectrogram_length']
+    fingerprint_3d = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size])
+
+    def lsnn_cell():
+        return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=20.,
+                         n_refractory=2, tau_adaptation=input_time_size, beta=2.)
+
+    # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
+    # outputs_forward, _ = tf.nn.dynamic_rnn(cell, fingerprint_3d, dtype=tf.float32, scope='fwRNN', swap_memory=True)
+    rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)
+    rnn_outputs = rnn_layer(fingerprint_3d, training=is_training)
+    psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
+    rnn_output = psps[:, -1]
+
+    # TODO: firing rate regularization, firing rate monitoring, dropout?
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(
