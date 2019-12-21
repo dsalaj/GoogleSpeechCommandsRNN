@@ -150,10 +150,7 @@ def create_model(fingerprint_input, model_settings, model_architecture,
     return create_tiny_embedding_conv_model(fingerprint_input, model_settings,
                                             is_training)
   else:
-    raise Exception('model_architecture argument "' + model_architecture +
-                    '" not recognized, should be one of "single_fc", "conv",' +
-                    ' "low_latency_conv, "low_latency_svdf",' +
-                    ' "tiny_conv", or "tiny_embedding_conv"')
+    raise Exception('model_architecture argument "' + model_architecture + '" not recognized')
 
 
 def load_variables_from_checkpoint(sess, start_checkpoint):
@@ -386,7 +383,7 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
     psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
     rnn_output = psps[:, -1]
 
-    # TODO: firing rate regularization, firing rate monitoring, dropout?
+    # TODO: dropout
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(
@@ -400,7 +397,7 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
     final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
 
     if is_training:
-        return final_fc, dropout_prob
+        return final_fc, rnn_outputs, dropout_prob
     else:
         return final_fc
 

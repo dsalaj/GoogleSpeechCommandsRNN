@@ -135,11 +135,17 @@ def main(_):
   else:
     fingerprint_input = input_placeholder
 
-  logits, dropout_prob = models.create_model(
+  model_out = models.create_model(
       fingerprint_input,
       model_settings,
       FLAGS.model_architecture,
       is_training=True)
+
+  if FLAGS.model_architecture == 'lsnn':
+    logits, spikes, dropout_prob = model_out
+    av = tf.reduce_mean(spikes, axis=(0, 1))
+  else:
+    logits, dropout_prob = model_out
 
   # Define loss and optimizer
   ground_truth_input = tf.compat.v1.placeholder(
@@ -156,6 +162,11 @@ def main(_):
   with tf.compat.v1.name_scope('cross_entropy'):
     cross_entropy_mean = tf.compat.v1.losses.sparse_softmax_cross_entropy(
         labels=ground_truth_input, logits=logits)
+
+  if FLAGS.model_architecture == 'lsnn':
+    regularization_f0 = 10 / 1000  # 10Hz
+    loss_reg = tf.reduce_sum(tf.square(av - regularization_f0) * 0.01)
+    cross_entropy_mean += loss_reg
 
   if FLAGS.quantize:
     try:
@@ -243,25 +254,41 @@ def main(_):
         FLAGS.batch_size, 0, model_settings, FLAGS.background_frequency,
         FLAGS.background_volume, time_shift_samples, 'training', sess)
     # Run the graph with this batch of training data.
-    train_summary, train_accuracy, cross_entropy_value, _, _ = sess.run(
-        [
+    train_nodes = [
             merged_summaries,
             evaluation_step,
             cross_entropy_mean,
             train_step,
             increment_global_step,
-        ],
+        ]
+    if FLAGS.model_architecture == 'lsnn':
+        train_nodes.append(spikes)
+    train_return = sess.run(
+        train_nodes,
         feed_dict={
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
             dropout_prob: 0.5
         })
+    if FLAGS.model_architecture == 'lsnn':
+        train_summary, train_accuracy, cross_entropy_value, _, _, train_spikes = train_return
+    else:
+        train_summary, train_accuracy, cross_entropy_value, _, _ = train_return
     train_writer.add_summary(train_summary, training_step)
-    tf.compat.v1.logging.info(
-        'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
-        (training_step, learning_rate_value, train_accuracy * 100,
-         cross_entropy_value))
+    if training_step % FLAGS.print_every == 0:
+        if FLAGS.model_architecture != 'lsnn':
+            tf.compat.v1.logging.info(
+                'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+                (training_step, learning_rate_value, train_accuracy * 100,
+                 cross_entropy_value))
+        else:
+            neuron_rates = np.mean(train_spikes, axis=(0,1)) * 1000
+            firing_stats = [np.mean(neuron_rates), np.min(neuron_rates), np.max(neuron_rates)]
+            tf.compat.v1.logging.info(
+                'Step #%d: rate %.4f, accuracy %.1f%%, cross entropy %.3f, firing avg %.1f min %.1f max %.1f' %
+                (training_step, learning_rate_value, train_accuracy * 100,
+                 cross_entropy_value, firing_stats[0], firing_stats[1], firing_stats[2]))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
       set_size = audio_processor.set_size('validation')
@@ -450,7 +477,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--save_step_interval',
       type=int,
-      default=100,
+      default=1000,
       help='Save model checkpoint every save_steps.')
   parser.add_argument(
       '--start_checkpoint',
@@ -480,7 +507,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--n_hidden',
       type=int,
-      default=128,
+      default=512,
       help='Number of hidden units in recurrent models.')
   parser.add_argument(
       '--n_layer',
@@ -492,6 +519,11 @@ if __name__ == '__main__':
       type=float,
       default=0.4,
       help='Dropoout probability for recurrent models.',)
+  parser.add_argument(
+      '--print_every',
+      type=int,
+      default=10,
+      help='How often to print the training step results.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):
@@ -523,7 +555,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--optimizer',
       type=str,
-      default='gradient_descent',
+      default='adam',
       help='Optimizer (gradient_descent, momentum, adam)')
 
   FLAGS, unparsed = parser.parse_known_args()
