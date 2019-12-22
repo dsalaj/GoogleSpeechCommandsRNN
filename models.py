@@ -373,17 +373,19 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
     fingerprint_3d = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size])
 
     def lsnn_cell():
+        n_lif = int(model_settings['n_hidden'] * model_settings['n_lif_frac'])
+        n_alif = model_settings['n_hidden'] - n_lif
+        beta = np.concatenate([np.zeros(n_lif), np.ones(n_alif) * model_settings['beta']])
         return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=20.,
-                         n_refractory=2, tau_adaptation=input_time_size, beta=2.)
+                         n_refractory=2, tau_adaptation=input_time_size, beta=beta)
 
     # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
-    # outputs_forward, _ = tf.nn.dynamic_rnn(cell, fingerprint_3d, dtype=tf.float32, scope='fwRNN', swap_memory=True)
     rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)
     rnn_outputs = rnn_layer(fingerprint_3d, training=is_training)
     psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
     rnn_output = psps[:, -1]
 
-    # TODO: dropout
+    # TODO: dropout, layers, delays, LIF ALIF split,
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(

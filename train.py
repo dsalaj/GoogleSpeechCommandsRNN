@@ -102,6 +102,8 @@ def main(_):
   model_settings['n_hidden'] = FLAGS.n_hidden
   model_settings['n_layer'] = FLAGS.n_layer
   model_settings['dropout_prob'] = FLAGS.dropout_prob
+  model_settings['n_lif_frac'] = FLAGS.n_lif_frac
+  model_settings['beta'] = FLAGS.beta
   audio_processor = input_data.AudioProcessor(
       FLAGS.data_url, FLAGS.data_dir,
       FLAGS.silence_percentage, FLAGS.unknown_percentage,
@@ -165,7 +167,7 @@ def main(_):
 
   if FLAGS.model_architecture == 'lsnn':
     regularization_f0 = 10 / 1000  # 10Hz
-    loss_reg = tf.reduce_sum(tf.square(av - regularization_f0) * 0.01)
+    loss_reg = tf.reduce_sum(tf.square(av - regularization_f0) * FLAGS.reg)
     cross_entropy_mean += loss_reg
 
   if FLAGS.quantize:
@@ -524,6 +526,21 @@ if __name__ == '__main__':
       type=int,
       default=10,
       help='How often to print the training step results.',)
+  parser.add_argument(
+      '--reg',
+      type=float,
+      default=0.01,
+      help='Firing rate regularization coefficient.',)
+  parser.add_argument(
+      '--n_lif_frac',
+      type=float,
+      default=0.0,
+      help='Fraction of non-adaptive LIF neurons in LSNN.',)
+  parser.add_argument(
+      '--beta',
+      type=float,
+      default=2.,
+      help='Adaptation coefficient of ALIF neurons in LSNN.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):
