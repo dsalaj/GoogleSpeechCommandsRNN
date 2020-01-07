@@ -73,6 +73,8 @@ from __future__ import print_function
 import argparse
 import os.path
 import sys
+import json
+from datetime import datetime
 
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -230,7 +232,6 @@ def main(_):
 
   tf.compat.v1.logging.info('Training from step: %d ', start_step)
 
-  stored_name = '{}_l{}_h{}'.format(FLAGS.model_architecture, FLAGS.n_layer, FLAGS.n_hidden)
   # Save graph.pbtxt.
   tf.io.write_graph(sess.graph_def, FLAGS.train_dir,
                     stored_name + '.pbtxt')
@@ -242,6 +243,7 @@ def main(_):
     f.write('\n'.join(audio_processor.words_list))
 
   # Training loop.
+  performance_metrics = {'val': [], 'test': [], 'firing_rates': []}
   training_steps_max = np.sum(training_steps_list)
   for training_step in xrange(start_step, training_steps_max + 1):
     # Figure out what the current learning rate is.
@@ -263,9 +265,7 @@ def main(_):
             train_step,
             increment_global_step,
         ]
-    if FLAGS.model_architecture == 'lsnn':
-        train_nodes.append(spikes)
-    train_return = sess.run(
+    train_summary, train_accuracy, cross_entropy_value, _, _ = sess.run(
         train_nodes,
         feed_dict={
             fingerprint_input: train_fingerprints,
@@ -273,10 +273,6 @@ def main(_):
             learning_rate_input: learning_rate_value,
             dropout_prob: 0.5
         })
-    if FLAGS.model_architecture == 'lsnn':
-        train_summary, train_accuracy, cross_entropy_value, _, _, train_spikes = train_return
-    else:
-        train_summary, train_accuracy, cross_entropy_value, _, _ = train_return
     train_writer.add_summary(train_summary, training_step)
     if training_step % FLAGS.print_every == 0:
         if FLAGS.model_architecture != 'lsnn':
@@ -285,12 +281,10 @@ def main(_):
                 (training_step, learning_rate_value, train_accuracy * 100,
                  cross_entropy_value))
         else:
-            neuron_rates = np.mean(train_spikes, axis=(0,1)) * 1000
-            firing_stats = [np.mean(neuron_rates), np.min(neuron_rates), np.max(neuron_rates)]
+
             tf.compat.v1.logging.info(
-                'Step #%d: rate %.4f, accuracy %.1f%%, cross entropy %.3f, firing avg %.1f min %.1f max %.1f' %
-                (training_step, learning_rate_value, train_accuracy * 100,
-                 cross_entropy_value, firing_stats[0], firing_stats[1], firing_stats[2]))
+                'Step #%d: rate %.4f, accuracy %.1f%%, cross entropy %.3f' %
+                (training_step, learning_rate_value, train_accuracy * 100, cross_entropy_value))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
       set_size = audio_processor.set_size('validation')
@@ -302,8 +296,8 @@ def main(_):
                                      0.0, 0, 'validation', sess))
         # Run a validation step and capture training summaries for TensorBoard
         # with the `merged` op.
-        validation_summary, validation_accuracy, conf_matrix = sess.run(
-            [merged_summaries, evaluation_step, confusion_matrix],
+        validation_summary, validation_accuracy, conf_matrix, val_spikes = sess.run(
+            [merged_summaries, evaluation_step, confusion_matrix, spikes],
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
@@ -316,9 +310,18 @@ def main(_):
           total_conf_matrix = conf_matrix
         else:
           total_conf_matrix += conf_matrix
+        neuron_rates = np.mean(val_spikes, axis=(0, 1)) * 1000
+        firing_stats = [np.mean(neuron_rates), np.min(neuron_rates), np.max(neuron_rates)]
       tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
       tf.compat.v1.logging.info('Step %d: Validation accuracy = %.1f%% (N=%d)' %
                                 (training_step, total_accuracy * 100, set_size))
+      tf.compat.v1.logging.info('Firing rates: avg %.1f min %.1f max %.1f' %
+                                (firing_stats[0], firing_stats[1], firing_stats[2]))
+      performance_metrics['val'].append(total_accuracy)
+      performance_metrics['firing_rates'].append('avg %.1f min %.1f max %.1f' %
+                                                 (firing_stats[0], firing_stats[1], firing_stats[2]))
+      with open(os.path.join(FLAGS.summaries_dir, 'performance.json'), 'w') as f:
+          json.dump({**performance_metrics, 'flags': {**vars(FLAGS)}}, f, indent=4, sort_keys=True)
 
     # Save the model checkpoint periodically.
     if (training_step % FLAGS.save_step_interval == 0 or
@@ -352,6 +355,10 @@ def main(_):
   tf.compat.v1.logging.warn('Confusion Matrix:\n %s' % (total_conf_matrix))
   tf.compat.v1.logging.warn('Final test accuracy = %.1f%% (N=%d)' %
                             (total_accuracy * 100, set_size))
+  performance_metrics['test'].append(total_accuracy)
+
+  with open(os.path.join(FLAGS.summaries_dir, 'performance.json'), 'w') as f:
+    json.dump({**performance_metrics, 'flags': {**vars(FLAGS)}}, f, indent=4, sort_keys=True)
 
 
 if __name__ == '__main__':
@@ -509,7 +516,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--n_hidden',
       type=int,
-      default=512,
+      default=1024,
       help='Number of hidden units in recurrent models.')
   parser.add_argument(
       '--n_layer',
@@ -529,7 +536,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--reg',
       type=float,
-      default=0.01,
+      default=0.001,
       help='Firing rate regularization coefficient.',)
   parser.add_argument(
       '--n_lif_frac',
@@ -576,4 +583,9 @@ if __name__ == '__main__':
       help='Optimizer (gradient_descent, momentum, adam)')
 
   FLAGS, unparsed = parser.parse_known_args()
+  stored_name = '{}_{}_l{}_h{}_strd{}'.format(datetime.now().strftime("%Y%m%d-%H%M%S"),
+      FLAGS.model_architecture, FLAGS.n_layer, FLAGS.n_hidden, FLAGS.window_stride_ms)
+  if FLAGS.model_architecture == 'lsnn':
+      stored_name += 'b{}_lif{}_reg{}'.format(FLAGS.beta, FLAGS.n_lif_frac, FLAGS.reg)
+  FLAGS.summaries_dir = os.path.join(FLAGS.summaries_dir, stored_name)
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)
