@@ -271,7 +271,7 @@ def main(_):
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
-            dropout_prob: 0.5
+            dropout_prob: FLAGS.dropout_prob
         })
     train_writer.add_summary(train_summary, training_step)
     if training_step % FLAGS.print_every == 0:
@@ -548,6 +548,11 @@ if __name__ == '__main__':
       type=float,
       default=2.,
       help='Adaptation coefficient of ALIF neurons in LSNN.',)
+  parser.add_argument(
+      '--comment',
+      type=str,
+      default='',
+      help='String to append to output dir.')
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):
@@ -583,9 +588,13 @@ if __name__ == '__main__':
       help='Optimizer (gradient_descent, momentum, adam)')
 
   FLAGS, unparsed = parser.parse_known_args()
-  stored_name = '{}_{}_l{}_h{}_strd{}'.format(datetime.now().strftime("%Y%m%d-%H%M%S"),
-      FLAGS.model_architecture, FLAGS.n_layer, FLAGS.n_hidden, FLAGS.window_stride_ms)
+  print(json.dumps(vars(FLAGS), indent=4))
+  stored_name = '{}_{}_l{}_h{}_w{}str{}_do{}'.format(
+      datetime.now().strftime("%Y%m%d-%H%M%S"),
+      FLAGS.model_architecture, FLAGS.n_layer, FLAGS.n_hidden, FLAGS.window_size_ms, FLAGS.window_stride_ms,
+      FLAGS.dropout_prob)
   if FLAGS.model_architecture == 'lsnn':
-      stored_name += 'b{}_lif{}_reg{}'.format(FLAGS.beta, FLAGS.n_lif_frac, FLAGS.reg)
+      stored_name += '_b{}_lif{}_reg{}'.format(FLAGS.beta, FLAGS.n_lif_frac, FLAGS.reg)
+  stored_name += '_{}'.format(FLAGS.comment)
   FLAGS.summaries_dir = os.path.join(FLAGS.summaries_dir, stored_name)
   tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

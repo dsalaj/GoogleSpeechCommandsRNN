@@ -6,7 +6,7 @@ import numpy as np
 import numpy.random as rd
 import tensorflow as tf
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.layers.recurrent import _generate_zero_filled_state_for_cell
+from tensorflow.python.keras.layers.recurrent import _generate_zero_filled_state_for_cell, DropoutRNNCellMixin
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
@@ -495,164 +495,163 @@ def tf_cell_to_savable_dict(cell, sess, supplement={}):
 #                                    z_buffer=new_z_buffer)
 #         return [new_z, thr], new_state
 
-
+#
 FastALIFStateTuple = namedtuple('ALIFState', (
     'z',
     'v',
     'b',
     'r',
 ))
+#
+#
+# class FastALIFold(Cell):
+#     def __init__(self, n_in, n_rec, tau=20, thr=0.01,
+#                  dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
+#                  tau_adaptation=200., beta=1.6,
+#                  rewiring_connectivity=-1, dampening_factor=0.3,
+#                  in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
+#                  add_current=0., thr_min=0.005):
+#         """
+#         Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
+#
+#         :param n_in: number of input neurons
+#         :param n_rec: number of recurrent neurons
+#         :param tau: membrane time constant
+#         :param thr: threshold voltage
+#         :param dt: time step of the simulation
+#         :param n_refractory: number of refractory time steps
+#         :param dtype: data type of the cell tensors
+#         :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
+#         :param tau_adaptation: adaptation time constant for the threshold voltage
+#         :param beta: amplitude of adpatation
+#         :param rewiring_connectivity: number of non-zero synapses in weight matrices (at initialization)
+#         :param in_neuron_sign: vector of +1, -1 to specify input neuron signs
+#         :param rec_neuron_sign: same of recurrent neurons
+#         :param injected_noise_current: amplitude of current noise
+#         """
+#         if np.isscalar(tau): tau = tf.ones(n_rec, dtype=dtype) * np.mean(tau)
+#         if np.isscalar(thr): thr = tf.ones(n_rec, dtype=dtype) * np.mean(thr)
+#         tau = tf.cast(tau,dtype=dtype)
+#         dt = tf.cast(dt,dtype=dtype)
+#
+#         self.dampening_factor = dampening_factor
+#
+#         # Parameters
+#         self.n_delay = n_delay
+#         self.n_refractory = n_refractory
+#
+#         self.dt = dt
+#         self.n_in = n_in
+#         self.n_rec = n_rec
+#         self.data_type = dtype
+#
+#         self._num_units = self.n_rec
+#
+#         self.tau = tau
+#         self._decay = tf.exp(-dt / tau)
+#         self.thr = thr
+#
+#         self.injected_noise_current = injected_noise_current
+#
+#         self.rewiring_connectivity = rewiring_connectivity
+#         self.in_neuron_sign = in_neuron_sign
+#         self.rec_neuron_sign = rec_neuron_sign
+#
+#         if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
+#         if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
+#
+#         self.tau_adaptation = tau_adaptation
+#         self.beta = beta
+#         self.min_beta = np.min(beta)
+#         self.elifs = beta < 0
+#         self.decay_b = tf.exp(-dt / tau_adaptation)
+#         self.add_current = add_current
+#         self.thr_min = thr_min
+#         # b_max = (thr_min - thr) / beta
+#         # b_max[~np.isfinite(b_max)] = np.finfo(b_max.dtype).max
+#         # self.b_max = b_max
+#         self.built = False
+#         self._keras_style = False
+#
+#     @tf_utils.shape_type_conversion
+#     def build(self, inputs_shape):
+#         if inputs_shape[-1] is None:
+#             raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s" %
+#                              str(inputs_shape))
+#         # _check_supported_dtypes(self.dtype)
+#         n_in = inputs_shape[-1]
+#         n_rec = self.n_rec
+#
+#         # Input weights
+#         self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
+#         # self.w_in_var = tf.Variable(self.w_in_init, dtype=dtype, name="InputWeight")
+#         self.w_in_var = self.add_variable("InputWeight", shape=[n_in, n_rec])
+#         self.w_in_val = self.w_in_var
+#         self.W_in = self.w_in_var
+#
+#         # self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=dtype, name='RecurrentWeight')
+#         self.w_rec_var = self.add_variable("RecurrentWeight", shape=[n_rec, n_rec])
+#         self.w_rec_val = self.w_rec_var
+#         # Disconnect autotapse
+#         recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
+#         self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val), self.w_rec_val)
+#         self.W_rec = self.w_rec_val
+#
+#         self.built = True
+#
+#     @property
+#     def output_size(self):
+#         return [self.n_rec, self.n_rec]
+#
+#     @property
+#     def state_size(self):
+#         return FastALIFStateTuple(v=self.n_rec, z=self.n_rec, b=self.n_rec, r=self.n_rec)
+#
+#     def zero_state(self, batch_size, dtype, n_rec=None):
+#         if n_rec is None: n_rec = self.n_rec
+#
+#         v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+#         z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+#         b0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+#         r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+#
+#         return FastALIFStateTuple(v=v0, z=z0, b=b0, r=r0)
+#
+#     def compute_z(self, v, adaptive_thr):
+#         v_scaled = (v - adaptive_thr) / adaptive_thr
+#         z = SpikeFunction(v_scaled, self.dampening_factor)
+#         z = z * 1 / self.dt
+#         return z
+#
+#     def __call__(self, inputs, state, scope=None, dtype=tf.float32):
+#
+#         i_in = tf.matmul(inputs, self.w_in_val)
+#         i_rec = tf.matmul(state.z, self.w_rec_val)
+#         i_t = i_in + i_rec + self.add_current
+#
+#         new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
+#         # # in case of negatively adapting threshold (transient increase in excitability of ELIF neurons):
+#         # # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
+#         # clipped_new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
+#         thr = self.thr + new_b * self.beta
+#         # clipped_thr = self.thr + clipped_new_b * self.beta
+#         # thr = tf.where(tf.cast(tf.ones([tf.shape(inputs)[0], 1]) * self.elifs, dtype=tf.bool), clipped_thr, thr)
+#
+#         I_reset = state.z * thr * self.dt
+#
+#         new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
+#
+#         # Spike generation
+#         is_refractory = tf.greater(state.r, .1)
+#         zeros_like_spikes = tf.zeros_like(state.z)
+#         new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
+#         new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
+#                                  0., float(self.n_refractory))
+#
+#         return [new_z, thr], FastALIFStateTuple(v=new_v, z=new_z, b=new_b, r=new_r)
+#
 
-
-class FastALIFold(Cell):
-    def __init__(self, n_in, n_rec, tau=20, thr=0.01,
-                 dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
-                 tau_adaptation=200., beta=1.6,
-                 rewiring_connectivity=-1, dampening_factor=0.3,
-                 in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
-                 add_current=0., thr_min=0.005):
-        """
-        Tensorflow cell object that simulates a LIF neuron with an approximation of the spike derivatives.
-
-        :param n_in: number of input neurons
-        :param n_rec: number of recurrent neurons
-        :param tau: membrane time constant
-        :param thr: threshold voltage
-        :param dt: time step of the simulation
-        :param n_refractory: number of refractory time steps
-        :param dtype: data type of the cell tensors
-        :param n_delay: number of synaptic delay, the delay range goes from 1 to n_delay time steps
-        :param tau_adaptation: adaptation time constant for the threshold voltage
-        :param beta: amplitude of adpatation
-        :param rewiring_connectivity: number of non-zero synapses in weight matrices (at initialization)
-        :param in_neuron_sign: vector of +1, -1 to specify input neuron signs
-        :param rec_neuron_sign: same of recurrent neurons
-        :param injected_noise_current: amplitude of current noise
-        """
-        if np.isscalar(tau): tau = tf.ones(n_rec, dtype=dtype) * np.mean(tau)
-        if np.isscalar(thr): thr = tf.ones(n_rec, dtype=dtype) * np.mean(thr)
-        tau = tf.cast(tau,dtype=dtype)
-        dt = tf.cast(dt,dtype=dtype)
-
-        self.dampening_factor = dampening_factor
-
-        # Parameters
-        self.n_delay = n_delay
-        self.n_refractory = n_refractory
-
-        self.dt = dt
-        self.n_in = n_in
-        self.n_rec = n_rec
-        self.data_type = dtype
-
-        self._num_units = self.n_rec
-
-        self.tau = tau
-        self._decay = tf.exp(-dt / tau)
-        self.thr = thr
-
-        self.injected_noise_current = injected_noise_current
-
-        self.rewiring_connectivity = rewiring_connectivity
-        self.in_neuron_sign = in_neuron_sign
-        self.rec_neuron_sign = rec_neuron_sign
-
-        if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
-        if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
-
-        self.tau_adaptation = tau_adaptation
-        self.beta = beta
-        self.min_beta = np.min(beta)
-        self.elifs = beta < 0
-        self.decay_b = tf.exp(-dt / tau_adaptation)
-        self.add_current = add_current
-        self.thr_min = thr_min
-        # b_max = (thr_min - thr) / beta
-        # b_max[~np.isfinite(b_max)] = np.finfo(b_max.dtype).max
-        # self.b_max = b_max
-        self.built = False
-        self._keras_style = False
-
-    @tf_utils.shape_type_conversion
-    def build(self, inputs_shape):
-        if inputs_shape[-1] is None:
-            raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s" %
-                             str(inputs_shape))
-        # _check_supported_dtypes(self.dtype)
-        n_in = inputs_shape[-1]
-        n_rec = self.n_rec
-
-        # Input weights
-        self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
-        # self.w_in_var = tf.Variable(self.w_in_init, dtype=dtype, name="InputWeight")
-        self.w_in_var = self.add_variable("InputWeight", shape=[n_in, n_rec])
-        self.w_in_val = self.w_in_var
-        self.W_in = self.w_in_var
-
-        # self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=dtype, name='RecurrentWeight')
-        self.w_rec_var = self.add_variable("RecurrentWeight", shape=[n_rec, n_rec])
-        self.w_rec_val = self.w_rec_var
-        # Disconnect autotapse
-        recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
-        self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val), self.w_rec_val)
-        self.W_rec = self.w_rec_val
-
-        self.built = True
-
-    @property
-    def output_size(self):
-        return [self.n_rec, self.n_rec]
-
-    @property
-    def state_size(self):
-        return FastALIFStateTuple(v=self.n_rec, z=self.n_rec, b=self.n_rec, r=self.n_rec)
-
-    def zero_state(self, batch_size, dtype, n_rec=None):
-        if n_rec is None: n_rec = self.n_rec
-
-        v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        b0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-        r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
-
-        return FastALIFStateTuple(v=v0, z=z0, b=b0, r=r0)
-
-    def compute_z(self, v, adaptive_thr):
-        v_scaled = (v - adaptive_thr) / adaptive_thr
-        z = SpikeFunction(v_scaled, self.dampening_factor)
-        z = z * 1 / self.dt
-        return z
-
-    def __call__(self, inputs, state, scope=None, dtype=tf.float32):
-
-        i_in = tf.matmul(inputs, self.w_in_val)
-        i_rec = tf.matmul(state.z, self.w_rec_val)
-        i_t = i_in + i_rec + self.add_current
-
-        new_b = self.decay_b * state.b + (np.ones(self.n_rec) - self.decay_b) * state.z
-        # # in case of negatively adapting threshold (transient increase in excitability of ELIF neurons):
-        # # clip adaptive threshold component (new_b) to prevent the threshold (thr) getting too small or negative
-        # clipped_new_b = tf.minimum(new_b, tf.ones_like(new_b, dtype=dtype) * tf.cast(self.b_max, dtype=dtype))
-        thr = self.thr + new_b * self.beta
-        # clipped_thr = self.thr + clipped_new_b * self.beta
-        # thr = tf.where(tf.cast(tf.ones([tf.shape(inputs)[0], 1]) * self.elifs, dtype=tf.bool), clipped_thr, thr)
-
-        I_reset = state.z * thr * self.dt
-
-        new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
-
-        # Spike generation
-        is_refractory = tf.greater(state.r, .1)
-        zeros_like_spikes = tf.zeros_like(state.z)
-        new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
-        new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
-                                 0., float(self.n_refractory))
-
-        return [new_z, thr], FastALIFStateTuple(v=new_v, z=new_z, b=new_b, r=new_r)
-
-
-# class LSTMCell(DropoutRNNCellMixin, Layer):
-class KerasALIF(Layer):
+class KerasALIF(DropoutRNNCellMixin, Layer):
   def __init__(self,
                n_in, units, tau=20, thr=0.01,
                dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
@@ -759,7 +758,16 @@ class KerasALIF(Layer):
     return z
 
   def call(self, inputs, states, training=None):
-    state = FastALIFStateTuple(v=states[0], z=states[1], b=states[2], r=states[3])
+
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(states[1], training)
+    if 0 < self.dropout < 1.:
+        inputs = inputs * dp_mask
+    if 0 < self.recurrent_dropout < 1.:
+        state = FastALIFStateTuple(v=states[0], z=states[1] * rec_dp_mask, b=states[2], r=states[3])
+    else:
+        state = FastALIFStateTuple(v=states[0], z=states[1], b=states[2], r=states[3])
+
     i_in = tf.matmul(inputs, self.W_in)
     i_rec = tf.matmul(state.z, self.W_rec)
     i_t = i_in + i_rec + self.add_current
@@ -796,10 +804,10 @@ class KerasALIF(Layer):
             constraints.serialize(self.kernel_constraint),
         'recurrent_constraint':
             constraints.serialize(self.recurrent_constraint),
-        # 'dropout':
-        #     self.dropout,
-        # 'recurrent_dropout':
-        #     self.recurrent_dropout,
+        'dropout':
+            self.dropout,
+        'recurrent_dropout':
+            self.recurrent_dropout,
     }
     base_config = super(KerasALIF, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

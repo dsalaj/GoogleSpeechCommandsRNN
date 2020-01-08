@@ -19,6 +19,6 @@ betas=(1.2 2 3.5 5)
 
 for b in "${betas[@]}";
 do
-    CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. $COMMON --comment=HPsearch} --beta=$b | tee so_gpu_${TIME}_beta${b}.txt &
+    CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. $COMMON --comment=HPsearch --beta=$b | tee so_gpu_${TIME}_beta${b}.txt &
     wait
 done

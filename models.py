@@ -377,7 +377,9 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
         n_alif = model_settings['n_hidden'] - n_lif
         beta = np.concatenate([np.zeros(n_lif), np.ones(n_alif) * model_settings['beta']])
         return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=20.,
-                         n_refractory=2, tau_adaptation=input_time_size, beta=beta)
+                         n_refractory=2, tau_adaptation=input_time_size, beta=beta,
+                         dropout=model_settings['dropout_prob'],
+                         recurrent_dropout=model_settings['dropout_prob'])
 
     # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
     rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)
@@ -385,7 +387,7 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
     psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
     rnn_output = psps[:, -1]
 
-    # TODO: dropout, layers, delays, LIF ALIF split,
+    # TODO: layers, delays, ...
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(
