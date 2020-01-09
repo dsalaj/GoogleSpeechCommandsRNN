@@ -100,19 +100,21 @@ def main(_):
   model_settings = models.prepare_model_settings(
       len(input_data.prepare_words_list(FLAGS.wanted_words.split(','))),
       FLAGS.sample_rate, FLAGS.clip_duration_ms, FLAGS.window_size_ms,
-      FLAGS.window_stride_ms, FLAGS.feature_bin_count, FLAGS.preprocess)
+      FLAGS.window_stride_ms, FLAGS.feature_bin_count, FLAGS.preprocess
+  )
   model_settings['n_hidden'] = FLAGS.n_hidden
   model_settings['n_layer'] = FLAGS.n_layer
   model_settings['dropout_prob'] = FLAGS.dropout_prob
   model_settings['n_lif_frac'] = FLAGS.n_lif_frac
   model_settings['beta'] = FLAGS.beta
+  model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
   audio_processor = input_data.AudioProcessor(
       FLAGS.data_url, FLAGS.data_dir,
       FLAGS.silence_percentage, FLAGS.unknown_percentage,
       FLAGS.wanted_words.split(','), FLAGS.validation_percentage,
-      FLAGS.testing_percentage, model_settings, FLAGS.summaries_dir)
-  fingerprint_size = model_settings['fingerprint_size']
-  label_count = model_settings['label_count']
+      FLAGS.testing_percentage, model_settings, FLAGS.summaries_dir,
+      FLAGS.n_thr_spikes
+  )
   time_shift_samples = int((FLAGS.time_shift_ms * FLAGS.sample_rate) / 1000)
   # Figure out the learning rates for each training phase. Since it's often
   # effective to have high learning rates at the start of training, followed by
@@ -128,9 +130,10 @@ def main(_):
         '--how_many_training_steps and --learning_rate must be equal length '
         'lists, but are %d and %d long instead' % (len(training_steps_list),
                                                    len(learning_rates_list)))
-
+  n_thr_spikes = max(1, FLAGS.n_thr_spikes)
   input_placeholder = tf.compat.v1.placeholder(
-      tf.float32, [None, fingerprint_size], name='fingerprint_input')
+    tf.float32, [None, model_settings['fingerprint_size'] * (2 * n_thr_spikes - 1)],
+    name='fingerprint_input')
   if FLAGS.quantize:
     fingerprint_min, fingerprint_max = input_data.get_features_range(
         model_settings)
@@ -203,7 +206,7 @@ def main(_):
   correct_prediction = tf.equal(predicted_indices, ground_truth_input)
   confusion_matrix = tf.math.confusion_matrix(labels=ground_truth_input,
                                               predictions=predicted_indices,
-                                              num_classes=label_count)
+                                              num_classes=model_settings['label_count'])
   evaluation_step = tf.reduce_mean(input_tensor=tf.cast(correct_prediction,
                                                         tf.float32))
   with tf.compat.v1.get_default_graph().name_scope('eval'):
@@ -265,6 +268,7 @@ def main(_):
             train_step,
             increment_global_step,
         ]
+
     train_summary, train_accuracy, cross_entropy_value, _, _ = sess.run(
         train_nodes,
         feed_dict={
@@ -553,6 +557,11 @@ if __name__ == '__main__':
       type=str,
       default='',
       help='String to append to output dir.')
+  parser.add_argument(
+      '--n_thr_spikes',
+      type=int,
+      default=-1,
+      help='Number of thresholds in thr-crossing analog to spike encoding.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):

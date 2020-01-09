@@ -192,7 +192,7 @@ class AudioProcessor(object):
 
   def __init__(self, data_url, data_dir, silence_percentage, unknown_percentage,
                wanted_words, validation_percentage, testing_percentage,
-               model_settings, summaries_dir):
+               model_settings, summaries_dir, n_thr_spikes=-1):
     if data_dir:
       self.data_dir = data_dir
       self.maybe_download_and_extract_dataset(data_url, data_dir)
@@ -201,6 +201,7 @@ class AudioProcessor(object):
                               testing_percentage)
       self.prepare_background_data()
     self.prepare_processing_graph(model_settings, summaries_dir)
+    self.n_thr_spikes = max(1, n_thr_spikes)
 
   def maybe_download_and_extract_dataset(self, data_url, dest_directory):
     """Download and extract data set tar file.
@@ -607,7 +608,55 @@ class AudioProcessor(object):
       data[i - offset, :] = data_tensor.flatten()
       label_index = self.word_to_index[sample['label']]
       labels[i - offset] = label_index
+
+    if self.n_thr_spikes > 1:
+      # GENERATE THRESHOLD CROSSING SPIKES
+      # print(data.shape)
+      num_thrs = self.n_thr_spikes
+      thrs = np.linspace(0, 1, num_thrs)  # number of input neurons determines the resolution
+      spike_stack = []
+      for img in data:  # shape img = (3920)
+          Sspikes = None
+          for thr in thrs:
+              if Sspikes is not None:
+                  Sspikes = np.concatenate((Sspikes, self.find_onset_offset(img, thr)))
+              else:
+                  Sspikes = self.find_onset_offset(img, thr)
+          Sspikes = np.array(Sspikes)  # shape Sspikes = (2*num_thrs-1, 3920)
+          Sspikes = np.swapaxes(Sspikes, 0, 1)
+          spike_stack.append(Sspikes)
+      spike_stack = np.array(spike_stack)  # (64, 3920, 2*num_thrs-1)
+      # print(spike_stack.shape)
+      spike_stack = np.reshape(spike_stack, [sample_count, -1])  # (64, 74480) how_many, spec_time * 2*num_thrs-1
+      # print(spike_stack.shape)
+      data = spike_stack
     return data, labels
+
+  def find_onset_offset(self, y, threshold):
+      """
+      Given the input signal `y` with samples,
+      find the indices where `y` increases and descreases through the value `threshold`.
+      Return stacked binary arrays of shape `y` indicating onset and offset threshold crossings.
+      `y` must be 1-D numpy arrays.
+      """
+      if threshold == 1:
+          equal = y == threshold
+          transition_touch = np.where(equal)[0]
+          touch_spikes = np.zeros_like(y)
+          touch_spikes[transition_touch] = 1
+          return np.expand_dims(touch_spikes, axis=0)
+      else:
+          # Find where y crosses the threshold (increasing).
+          lower = y < threshold
+          higher = y >= threshold
+          transition_onset = np.where(lower[:-1] & higher[1:])[0]
+          transition_offset = np.where(higher[:-1] & lower[1:])[0]
+          onset_spikes = np.zeros_like(y)
+          offset_spikes = np.zeros_like(y)
+          onset_spikes[transition_onset] = 1
+          offset_spikes[transition_offset] = 1
+
+          return np.stack((onset_spikes, offset_spikes))
 
   def get_features_for_wav(self, wav_filename, model_settings, sess):
     """Applies the feature transformation process to the input_wav.

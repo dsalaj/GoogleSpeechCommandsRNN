@@ -370,7 +370,9 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
         dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['fingerprint_width']
     input_time_size = model_settings['spectrogram_length']
-    fingerprint_3d = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size])
+    input_channels = max(1, 2*model_settings['n_thr_spikes'] - 1)
+
+    fingerprint_3d = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size * input_channels])
 
     def lsnn_cell():
         n_lif = int(model_settings['n_hidden'] * model_settings['n_lif_frac'])
