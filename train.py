@@ -106,6 +106,8 @@ def main(_):
   model_settings['n_layer'] = FLAGS.n_layer
   model_settings['dropout_prob'] = FLAGS.dropout_prob
   model_settings['n_lif_frac'] = FLAGS.n_lif_frac
+  model_settings['tau'] = FLAGS.tau
+  model_settings['refr'] = FLAGS.refr
   model_settings['beta'] = FLAGS.beta
   model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
   audio_processor = input_data.AudioProcessor(
@@ -562,6 +564,16 @@ if __name__ == '__main__':
       type=int,
       default=-1,
       help='Number of thresholds in thr-crossing analog to spike encoding.',)
+  parser.add_argument(
+      '--tau',
+      type=float,
+      default=20.,
+      help='Membrane time constant of ALIF neurons in LSNN.',)
+  parser.add_argument(
+      '--refr',
+      type=int,
+      default=2,
+      help='Number of refractory time steps of ALIF neurons in LSNN.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):
