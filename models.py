@@ -40,7 +40,7 @@ def _next_power_of_two(x):
 
 def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
                            window_size_ms, window_stride_ms, feature_bin_count,
-                           preprocess):
+                           preprocess, in_repeat):
   """Calculates common settings needed for all models.
 
   Args:
@@ -91,6 +91,7 @@ def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
       'sample_rate': sample_rate,
       'preprocess': preprocess,
       'average_window_width': average_window_width,
+      'in_repeat': in_repeat,
   }
 
 
@@ -258,7 +259,7 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   if is_training:
     dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
   input_frequency_size = model_settings['fingerprint_width']
-  input_time_size = model_settings['spectrogram_length']
+  input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
   fingerprint_4d = tf.reshape(fingerprint_input,
                               [-1, input_time_size, input_frequency_size, 1])
   first_filter_width = 8
@@ -337,7 +338,7 @@ def create_lstm_model(fingerprint_input, model_settings, is_training):
     if is_training:
         dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['fingerprint_width']
-    input_time_size = model_settings['spectrogram_length']
+    input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
     fingerprint_3d = tf.reshape(fingerprint_input, [-1, input_time_size, input_frequency_size])
 
     cells = [tf.keras.layers.LSTMCell(model_settings['n_hidden'],
@@ -369,7 +370,7 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
     if is_training:
         dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['fingerprint_width']
-    input_time_size = model_settings['spectrogram_length']
+    input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
     tau = model_settings['tau']
     refr = model_settings['refr']
     input_channels = max(1, 2*model_settings['n_thr_spikes'] - 1)
@@ -459,7 +460,7 @@ def create_low_latency_conv_model(fingerprint_input, model_settings,
   if is_training:
     dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
   input_frequency_size = model_settings['fingerprint_width']
-  input_time_size = model_settings['spectrogram_length']
+  input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
   fingerprint_4d = tf.reshape(fingerprint_input,
                               [-1, input_time_size, input_frequency_size, 1])
   first_filter_width = 8
@@ -598,7 +599,7 @@ def create_low_latency_svdf_model(fingerprint_input, model_settings,
     dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
 
   input_frequency_size = model_settings['fingerprint_width']
-  input_time_size = model_settings['spectrogram_length']
+  input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
 
   # Validation.
   input_shape = fingerprint_input.get_shape()
@@ -794,7 +795,7 @@ def create_tiny_conv_model(fingerprint_input, model_settings, is_training):
   if is_training:
     dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
   input_frequency_size = model_settings['fingerprint_width']
-  input_time_size = model_settings['spectrogram_length']
+  input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
   fingerprint_4d = tf.reshape(fingerprint_input,
                               [-1, input_time_size, input_frequency_size, 1])
   first_filter_width = 8
@@ -899,7 +900,7 @@ def create_tiny_embedding_conv_model(fingerprint_input, model_settings,
   if is_training:
     dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
   input_frequency_size = model_settings['fingerprint_width']
-  input_time_size = model_settings['spectrogram_length']
+  input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
   fingerprint_4d = tf.reshape(fingerprint_input,
                               [-1, input_time_size, input_frequency_size, 1])
 

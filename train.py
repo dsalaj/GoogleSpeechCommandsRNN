@@ -100,7 +100,8 @@ def main(_):
   model_settings = models.prepare_model_settings(
       len(input_data.prepare_words_list(FLAGS.wanted_words.split(','))),
       FLAGS.sample_rate, FLAGS.clip_duration_ms, FLAGS.window_size_ms,
-      FLAGS.window_stride_ms, FLAGS.feature_bin_count, FLAGS.preprocess
+      FLAGS.window_stride_ms, FLAGS.feature_bin_count, FLAGS.preprocess,
+      FLAGS.in_repeat
   )
   model_settings['n_hidden'] = FLAGS.n_hidden
   model_settings['n_layer'] = FLAGS.n_layer
@@ -110,12 +111,13 @@ def main(_):
   model_settings['refr'] = FLAGS.refr
   model_settings['beta'] = FLAGS.beta
   model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
+  # model_settings['in_repeat'] = FLAGS.in_repeat
   audio_processor = input_data.AudioProcessor(
       FLAGS.data_url, FLAGS.data_dir,
       FLAGS.silence_percentage, FLAGS.unknown_percentage,
       FLAGS.wanted_words.split(','), FLAGS.validation_percentage,
       FLAGS.testing_percentage, model_settings, FLAGS.summaries_dir,
-      FLAGS.n_thr_spikes
+      FLAGS.n_thr_spikes, FLAGS.in_repeat
   )
   time_shift_samples = int((FLAGS.time_shift_ms * FLAGS.sample_rate) / 1000)
   # Figure out the learning rates for each training phase. Since it's often
@@ -134,7 +136,7 @@ def main(_):
                                                    len(learning_rates_list)))
   n_thr_spikes = max(1, FLAGS.n_thr_spikes)
   input_placeholder = tf.compat.v1.placeholder(
-    tf.float32, [None, model_settings['fingerprint_size'] * (2 * n_thr_spikes - 1)],
+    tf.float32, [None, model_settings['fingerprint_size'] * (2 * n_thr_spikes - 1) * model_settings['in_repeat']],
     name='fingerprint_input')
   if FLAGS.quantize:
     fingerprint_min, fingerprint_max = input_data.get_features_range(
@@ -532,7 +534,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--dropout_prob',
       type=float,
-      default=0.4,
+      default=0.0,
       help='Dropoout probability for recurrent models.',)
   parser.add_argument(
       '--print_every',
@@ -574,6 +576,11 @@ if __name__ == '__main__':
       type=int,
       default=2,
       help='Number of refractory time steps of ALIF neurons in LSNN.',)
+  parser.add_argument(
+      '--in_repeat',
+      type=int,
+      default=1,
+      help='Number of time steps to repeat every input feature.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):

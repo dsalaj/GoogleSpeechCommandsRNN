@@ -192,7 +192,7 @@ class AudioProcessor(object):
 
   def __init__(self, data_url, data_dir, silence_percentage, unknown_percentage,
                wanted_words, validation_percentage, testing_percentage,
-               model_settings, summaries_dir, n_thr_spikes=-1):
+               model_settings, summaries_dir, n_thr_spikes=-1, n_repeat=1):
     if data_dir:
       self.data_dir = data_dir
       self.maybe_download_and_extract_dataset(data_url, data_dir)
@@ -202,6 +202,7 @@ class AudioProcessor(object):
       self.prepare_background_data()
     self.prepare_processing_graph(model_settings, summaries_dir)
     self.n_thr_spikes = max(1, n_thr_spikes)
+    self.n_repeat = max(1, n_repeat)
 
   def maybe_download_and_extract_dataset(self, data_url, dest_directory):
     """Download and extract data set tar file.
@@ -608,6 +609,9 @@ class AudioProcessor(object):
       data[i - offset, :] = data_tensor.flatten()
       label_index = self.word_to_index[sample['label']]
       labels[i - offset] = label_index
+
+    if self.n_repeat > 1:
+      data = np.repeat(data, self.n_repeat, axis=1)
 
     if self.n_thr_spikes > 1:
       # GENERATE THRESHOLD CROSSING SPIKES
