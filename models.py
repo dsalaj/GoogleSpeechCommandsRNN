@@ -23,7 +23,7 @@ import math
 
 import tensorflow as tf
 
-from spiking_models import exp_convolve, KerasALIF
+from spiking_models import exp_convolve, KerasALIF, KerasDelayALIF
 
 
 def _next_power_of_two(x):
@@ -381,10 +381,17 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
         n_lif = int(model_settings['n_hidden'] * model_settings['n_lif_frac'])
         n_alif = model_settings['n_hidden'] - n_lif
         beta = np.concatenate([np.zeros(n_lif), np.ones(n_alif) * model_settings['beta']])
-        return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=tau,
-                         n_refractory=refr, tau_adaptation=input_time_size, beta=beta,
-                         dropout=model_settings['dropout_prob'],
-                         recurrent_dropout=model_settings['dropout_prob'])
+        if model_settings['n_delay'] > 1:
+          return KerasDelayALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=tau,
+                                n_refractory=refr, tau_adaptation=input_time_size, beta=beta,
+                                dropout=model_settings['dropout_prob'],
+                                recurrent_dropout=model_settings['dropout_prob'],
+                                n_delay=model_settings['n_delay'])
+        else:
+          return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=tau,
+                           n_refractory=refr, tau_adaptation=input_time_size, beta=beta,
+                           dropout=model_settings['dropout_prob'],
+                           recurrent_dropout=model_settings['dropout_prob'])
 
     # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
     rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)

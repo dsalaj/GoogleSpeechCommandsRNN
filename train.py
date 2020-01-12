@@ -111,6 +111,7 @@ def main(_):
   model_settings['refr'] = FLAGS.refr
   model_settings['beta'] = FLAGS.beta
   model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
+  model_settings['n_delay'] = FLAGS.n_delay
   # model_settings['in_repeat'] = FLAGS.in_repeat
   audio_processor = input_data.AudioProcessor(
       FLAGS.data_url, FLAGS.data_dir,
@@ -581,6 +582,11 @@ if __name__ == '__main__':
       type=int,
       default=1,
       help='Number of time steps to repeat every input feature.',)
+  parser.add_argument(
+      '--n_delay',
+      type=int,
+      default=0,
+      help='Maximum number of timesteps for synapse delay in LSNN.',)
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):

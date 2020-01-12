@@ -817,6 +817,243 @@ class KerasALIF(DropoutRNNCellMixin, Layer):
         self, inputs, batch_size, dtype))
 
 
+DelayALIFStateTuple = namedtuple('DelayALIFStateTuple', (
+    'z',
+    'v',
+    'b',
+    'r',
+    'i_future_buffer',
+))
+
+
+class KerasDelayALIF(DropoutRNNCellMixin, Layer):
+  def __init__(self,
+               n_in, units, tau=20, thr=0.01,
+               dt=1., n_refractory=0, dtype=tf.float32, n_delay=1,
+               tau_adaptation=200., beta=1.6,
+               rewiring_connectivity=-1, dampening_factor=0.3,
+               in_neuron_sign=None, rec_neuron_sign=None, injected_noise_current=0.,
+               add_current=0., thr_min=0.005,
+               input_initializer='glorot_normal',  # FIXME: try glorot_uniform
+               recurrent_initializer='glorot_normal',
+               input_regularizer=None,
+               recurrent_regularizer=None,
+               input_constraint=None,
+               recurrent_constraint=None,
+               dropout=0.,
+               recurrent_dropout=0.,
+               **kwargs):
+    super(KerasDelayALIF, self).__init__(**kwargs)
+    self.units = units
+
+    if np.isscalar(tau): tau = tf.ones(units, dtype=dtype) * np.mean(tau)
+    if np.isscalar(thr): thr = tf.ones(units, dtype=dtype) * np.mean(thr)
+    tau = tf.cast(tau, dtype=dtype)
+    dt = tf.cast(dt, dtype=dtype)
+
+    self.dampening_factor = dampening_factor
+
+    # Parameters
+    self.n_delay = n_delay
+    self.n_refractory = n_refractory
+
+    self.dt = dt
+    self.n_in = n_in
+    self.data_type = dtype
+
+    # self._num_units = self.n_rec
+
+    self.tau = tau
+    self._decay = tf.exp(-dt / tau)
+    self.thr = thr
+
+    self.injected_noise_current = injected_noise_current
+
+    self.rewiring_connectivity = rewiring_connectivity
+    self.in_neuron_sign = in_neuron_sign
+    self.rec_neuron_sign = rec_neuron_sign
+
+    if tau_adaptation is None: raise ValueError("alpha parameter for adaptive bias must be set")
+    if beta is None: raise ValueError("beta parameter for adaptive bias must be set")
+
+    self.tau_adaptation = tau_adaptation
+    self.beta = beta
+    self.min_beta = np.min(beta)
+    self.elifs = beta < 0
+    self.decay_b = tf.exp(-dt / tau_adaptation)
+    self.add_current = add_current
+    self.thr_min = thr_min
+
+    self.input_initializer = initializers.get(input_initializer)
+    self.recurrent_initializer = initializers.get(recurrent_initializer)
+
+    self.input_regularizer = regularizers.get(input_regularizer)
+    self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
+
+    self.input_constraint = constraints.get(input_constraint)
+    self.recurrent_constraint = constraints.get(recurrent_constraint)
+
+    self.dropout = min(1., max(0., dropout))
+    self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+    self.state_size = DelayALIFStateTuple(z=self.units, v=self.units, b=self.units, r=self.units,
+                                          i_future_buffer=(self.units, self.n_delay))
+    # self.state_size = data_structures.NoDependency(
+    #   [self.units, self.units, self.units, self.units, [self.units, self.n_delay]])
+    self.output_size = self.units
+
+  def weight_matrix_with_delay_dimension(self, w, d, n_delay):
+    """
+    Generate the tensor of shape n_in x n_out x n_delay that represents the synaptic weights with the right delays.
+
+    :param w: synaptic weight value, float tensor of shape (n_in x n_out)
+    :param d: delay number, int tensor of shape (n_in x n_out)
+    :param n_delay: number of possible delays
+    :return:
+    """
+    with tf.name_scope('WeightDelayer'):
+      w_d_list = []
+      for kd in range(n_delay):
+        mask = tf.equal(d, kd)
+        w_d = tf.where(condition=mask, x=w, y=tf.zeros_like(w))
+        w_d_list.append(w_d)
+
+      delay_axis = len(d.shape)
+      WD = tf.stack(w_d_list, axis=delay_axis)
+
+    return WD
+
+  def tf_roll(self, buffer, new_last_element=None, axis=0):
+    with tf.name_scope('roll'):
+      shp = buffer.get_shape()
+      l_shp = len(shp)
+
+      # Permute the index to roll over the right index
+      perm = np.concatenate([[axis], np.arange(axis), np.arange(start=axis + 1, stop=l_shp)])
+      buffer = tf.transpose(buffer, perm=perm)
+
+      # Add an element at the end of the buffer if requested, otherwise, add zero
+      if new_last_element is None:
+        shp = tf.shape(buffer)
+        new_last_element = tf.zeros(shape=shp[1:], dtype=buffer.dtype)
+      new_last_element = tf.expand_dims(new_last_element, axis=0)
+      new_buffer = tf.concat([buffer[1:], new_last_element], axis=0, name='rolled')
+
+      # Revert the index permutation
+      inv_perm = np.argsort(perm)
+      new_buffer = tf.transpose(new_buffer, perm=inv_perm)
+
+      new_buffer = tf.identity(new_buffer, name='Roll')
+      # new_buffer.set_shape(shp)
+    return new_buffer
+
+  @tf_utils.shape_type_conversion
+  def build(self, input_shape):
+    if input_shape[-1] is None:
+        raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s" %
+                         str(input_shape))
+    # _check_supported_dtypes(self.dtype)
+    n_in = input_shape[-1]
+    n_rec = self.units
+
+    self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
+    self.w_in_var = tf.Variable(self.w_in_init, dtype=self.data_type, name="InputWeight")
+    self.w_in_val = self.w_in_var
+    self.w_in_delay = tf.Variable(rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),
+                                  dtype=tf.int32, name="InDelays", trainable=False)
+    self.W_in = self.weight_matrix_with_delay_dimension(self.w_in_val, self.w_in_delay, self.n_delay)
+
+    self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=self.data_type, name='RecurrentWeight')
+    self.w_rec_val = self.w_rec_var
+    recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
+    self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val), self.w_rec_val)
+    self.w_rec_delay = tf.Variable(rd.randint(self.n_delay, size=n_rec * n_rec).reshape(n_rec, n_rec), dtype=tf.int32,
+                                   name="RecDelays", trainable=False)
+    self.W_rec = self.weight_matrix_with_delay_dimension(self.w_rec_val, self.w_rec_delay, self.n_delay)
+
+    self.built = True
+
+  def compute_z(self, v, adaptive_thr):
+    v_scaled = (v - adaptive_thr) / adaptive_thr
+    z = SpikeFunction(v_scaled, self.dampening_factor)
+    z = z * 1 / self.dt
+    return z
+
+  def call(self, inputs, states, training=None):
+
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(states[1], training)
+    if 0 < self.dropout < 1.:
+        inputs = inputs * dp_mask
+    if 0 < self.recurrent_dropout < 1.:
+        state = DelayALIFStateTuple(v=states[0], z=states[1] * rec_dp_mask, b=states[2], r=states[3],
+                                    i_future_buffer=states[4])
+    else:
+        state = DelayALIFStateTuple(v=states[0], z=states[1], b=states[2], r=states[3], i_future_buffer=states[4])
+
+    i_in = tf.einsum('bi,ijk->bjk', inputs, self.W_in)
+    i_rec = tf.einsum('bi,ijk->bjk', state.z, self.W_rec)
+    i_future_buffer = state.i_future_buffer + i_in + i_rec
+    i_t = i_future_buffer[:, :, 0] + self.add_current
+
+    new_b = self.decay_b * state.b + (np.ones(self.units) - self.decay_b) * state.z
+    thr = self.thr + new_b * self.beta
+
+    I_reset = state.z * thr * self.dt
+
+    new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
+
+    # Spike generation
+    is_refractory = tf.greater(state.r, .1)
+    zeros_like_spikes = tf.zeros_like(state.z)
+    new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
+    new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
+                             0., float(self.n_refractory))
+    new_i_future_buffer = self.tf_roll(i_future_buffer, axis=2)
+
+    return new_z, [new_v, new_z, new_b, new_r, new_i_future_buffer]
+
+  def get_config(self):
+    config = {
+        'units':
+            self.units,
+        'kernel_initializer':
+            initializers.serialize(self.kernel_initializer),
+        'recurrent_initializer':
+            initializers.serialize(self.recurrent_initializer),
+        'kernel_regularizer':
+            regularizers.serialize(self.kernel_regularizer),
+        'recurrent_regularizer':
+            regularizers.serialize(self.recurrent_regularizer),
+        'kernel_constraint':
+            constraints.serialize(self.kernel_constraint),
+        'recurrent_constraint':
+            constraints.serialize(self.recurrent_constraint),
+        'dropout':
+            self.dropout,
+        'recurrent_dropout':
+            self.recurrent_dropout,
+    }
+    base_config = super(KerasALIF, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+    n_rec = self.units
+
+    v0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+    z0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+    b0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+    r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
+
+    i_buff0 = tf.zeros(shape=(batch_size, n_rec, self.n_delay), dtype=dtype)
+
+    return DelayALIFStateTuple(
+      z=z0,
+      v=v0,
+      b=b0,
+      r=r0,
+      i_future_buffer=i_buff0
+    )
+
 #
 # STPStateTuple = namedtuple('STPState', (
 #     'z',
