@@ -667,6 +667,7 @@ class KerasALIF(DropoutRNNCellMixin, Layer):
                recurrent_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
+               eprop_sym=False,
                **kwargs):
     super(KerasALIF, self).__init__(**kwargs)
     self.units = units
@@ -677,6 +678,7 @@ class KerasALIF(DropoutRNNCellMixin, Layer):
     dt = tf.cast(dt, dtype=dtype)
 
     self.dampening_factor = dampening_factor
+    self.eprop_sym = eprop_sym
 
     # Parameters
     self.n_delay = n_delay
@@ -768,20 +770,25 @@ class KerasALIF(DropoutRNNCellMixin, Layer):
     else:
         state = FastALIFStateTuple(v=states[0], z=states[1], b=states[2], r=states[3])
 
-    i_in = tf.matmul(inputs, self.W_in)
-    i_rec = tf.matmul(state.z, self.W_rec)
-    i_t = i_in + i_rec + self.add_current
-
     new_b = self.decay_b * state.b + (np.ones(self.units) - self.decay_b) * state.z
     thr = self.thr + new_b * self.beta
 
-    I_reset = state.z * thr * self.dt
+    if self.eprop_sym:
+      z = tf.stop_gradient(state.z)
+    else:
+      z = state.z
+
+    i_in = tf.matmul(inputs, self.W_in)
+    i_rec = tf.matmul(z, self.W_rec)
+    i_t = i_in + i_rec + self.add_current
+
+    I_reset = z * thr * self.dt
 
     new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
 
     # Spike generation
     is_refractory = tf.greater(state.r, .1)
-    zeros_like_spikes = tf.zeros_like(state.z)
+    zeros_like_spikes = tf.zeros_like(z)
     new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
     new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
                              0., float(self.n_refractory))
@@ -842,6 +849,7 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
                recurrent_constraint=None,
                dropout=0.,
                recurrent_dropout=0.,
+               eprop_sym=False,
                **kwargs):
     super(KerasDelayALIF, self).__init__(**kwargs)
     self.units = units
@@ -852,6 +860,7 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
     dt = tf.cast(dt, dtype=dtype)
 
     self.dampening_factor = dampening_factor
+    self.eprop_sym = eprop_sym
 
     # Parameters
     self.n_delay = n_delay
@@ -990,21 +999,26 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
     else:
         state = DelayALIFStateTuple(v=states[0], z=states[1], b=states[2], r=states[3], i_future_buffer=states[4])
 
-    i_in = tf.einsum('bi,ijk->bjk', inputs, self.W_in)
-    i_rec = tf.einsum('bi,ijk->bjk', state.z, self.W_rec)
-    i_future_buffer = state.i_future_buffer + i_in + i_rec
-    i_t = i_future_buffer[:, :, 0] + self.add_current
-
     new_b = self.decay_b * state.b + (np.ones(self.units) - self.decay_b) * state.z
     thr = self.thr + new_b * self.beta
 
-    I_reset = state.z * thr * self.dt
+    if self.eprop_sym:
+      z = tf.stop_gradient(state.z)
+    else:
+      z = state.z
+
+    i_in = tf.einsum('bi,ijk->bjk', inputs, self.W_in)
+    i_rec = tf.einsum('bi,ijk->bjk', z, self.W_rec)
+    i_future_buffer = state.i_future_buffer + i_in + i_rec
+    i_t = i_future_buffer[:, :, 0] + self.add_current
+
+    I_reset = z * thr * self.dt
 
     new_v = self._decay * state.v + (1 - self._decay) * i_t - I_reset
 
     # Spike generation
     is_refractory = tf.greater(state.r, .1)
-    zeros_like_spikes = tf.zeros_like(state.z)
+    zeros_like_spikes = tf.zeros_like(z)
     new_z = tf.where(is_refractory, zeros_like_spikes, self.compute_z(new_v, thr))
     new_r = tf.clip_by_value(state.r + self.n_refractory * new_z - 1,
                              0., float(self.n_refractory))

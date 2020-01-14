@@ -386,12 +386,14 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
                                 n_refractory=refr, tau_adaptation=input_time_size, beta=beta,
                                 dropout=model_settings['dropout_prob'],
                                 recurrent_dropout=model_settings['dropout_prob'],
-                                n_delay=model_settings['n_delay'])
+                                n_delay=model_settings['n_delay'],
+                                eprop_sym=model_settings['eprop'])
         else:
           return KerasALIF(n_in=input_frequency_size, units=model_settings['n_hidden'], tau=tau,
                            n_refractory=refr, tau_adaptation=input_time_size, beta=beta,
                            dropout=model_settings['dropout_prob'],
-                           recurrent_dropout=model_settings['dropout_prob'])
+                           recurrent_dropout=model_settings['dropout_prob'],
+                           eprop_sym=model_settings['eprop'])
 
     # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
     rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)
