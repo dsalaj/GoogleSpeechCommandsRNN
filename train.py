@@ -113,6 +113,7 @@ def main(_):
   model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
   model_settings['n_delay'] = FLAGS.n_delay
   model_settings['eprop'] = FLAGS.eprop
+  model_settings['avg_spikes'] = FLAGS.avg_spikes
   # model_settings['in_repeat'] = FLAGS.in_repeat
   audio_processor = input_data.AudioProcessor(
       FLAGS.data_url, FLAGS.data_dir,
@@ -593,6 +594,11 @@ if __name__ == '__main__':
       type=bool,
       default=False,
       help='Use symmetric eprop for LSNN training')
+  parser.add_argument(
+      '--avg_spikes',
+      type=bool,
+      default=False,
+      help='Average spikes over time for readout')
 
   # Function used to parse --verbosity argument
   def verbosity_arg(value):

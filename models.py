@@ -395,13 +395,14 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
                            recurrent_dropout=model_settings['dropout_prob'],
                            eprop_sym=model_settings['eprop'])
 
-    # cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
-    rnn_layer = tf.keras.layers.RNN(lsnn_cell(), return_sequences=True, return_state=False)
+    cells = [lsnn_cell() for _ in range(model_settings['n_layer'])]
+    rnn_layer = tf.keras.layers.RNN(cells, return_sequences=True, return_state=False)
     rnn_outputs = rnn_layer(fingerprint_3d, training=is_training)
-    psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
-    rnn_output = psps[:, -1]
-
-    # TODO: layers, delays, ...
+    if model_settings['avg_spikes']:
+        rnn_output = tf.reduce_mean(rnn_outputs, axis=1)
+    else:
+        psps = exp_convolve(rnn_outputs, decay=np.exp(-1. / 20.))
+        rnn_output = psps[:, -1, :]
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(
