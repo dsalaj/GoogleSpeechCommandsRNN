@@ -367,8 +367,7 @@ def create_lstm_model(fingerprint_input, model_settings, is_training):
 
 def create_lsnn_model(fingerprint_input, model_settings, is_training):
     import numpy as np
-    if is_training:
-        dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
+    dropout_prob = tf.compat.v1.placeholder(tf.float32, name='dropout_prob')
     input_frequency_size = model_settings['fingerprint_width']
     input_time_size = model_settings['spectrogram_length'] * model_settings['in_repeat']
     tau = model_settings['tau']
@@ -415,10 +414,7 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
         shape=[label_count])
     final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
 
-    if is_training:
-        return final_fc, rnn_outputs, dropout_prob
-    else:
-        return final_fc
+    return final_fc, rnn_outputs, dropout_prob
 
 
 def create_low_latency_conv_model(fingerprint_input, model_settings,

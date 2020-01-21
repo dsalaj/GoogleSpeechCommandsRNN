@@ -138,6 +138,7 @@ def main(_):
         'lists, but are %d and %d long instead' % (len(training_steps_list),
                                                    len(learning_rates_list)))
   n_thr_spikes = max(1, FLAGS.n_thr_spikes)
+  training_placeholder = tf.compat.v1.placeholder(tf.bool, name='is_training')
   input_placeholder = tf.compat.v1.placeholder(
     tf.float32, [None, model_settings['fingerprint_size'] * (2 * n_thr_spikes - 1) * model_settings['in_repeat']],
     name='fingerprint_input')
@@ -153,7 +154,7 @@ def main(_):
       fingerprint_input,
       model_settings,
       FLAGS.model_architecture,
-      is_training=True)
+      is_training=training_placeholder)
 
   if FLAGS.model_architecture == 'lsnn':
     logits, spikes, dropout_prob = model_out
@@ -282,7 +283,8 @@ def main(_):
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
-            dropout_prob: FLAGS.dropout_prob
+            dropout_prob: FLAGS.dropout_prob,
+            training_placeholder: True,
         })
     train_writer.add_summary(train_summary, training_step)
     if training_step % FLAGS.print_every == 0:
@@ -312,7 +314,8 @@ def main(_):
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
-                dropout_prob: 1.0
+                dropout_prob: 1.0,
+                training_placeholder: False,
             })
         validation_writer.add_summary(validation_summary, training_step)
         batch_size = min(FLAGS.batch_size, set_size - i)
@@ -355,7 +358,8 @@ def main(_):
         feed_dict={
             fingerprint_input: test_fingerprints,
             ground_truth_input: test_ground_truth,
-            dropout_prob: 1.0
+            dropout_prob: 1.0,
+            training_placeholder: False,
         })
     batch_size = min(FLAGS.batch_size, set_size - i)
     total_accuracy += (test_accuracy * batch_size) / set_size
