@@ -904,10 +904,10 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
-    self.state_size = DelayALIFStateTuple(z=self.units, v=self.units, b=self.units, r=self.units,
-                                          i_future_buffer=(self.units, self.n_delay))
-    # self.state_size = data_structures.NoDependency(
-    #   [self.units, self.units, self.units, self.units, [self.units, self.n_delay]])
+    # self.state_size = DelayALIFStateTuple(z=self.units, v=self.units, b=self.units, r=self.units,
+    #                                       i_future_buffer=(self.units, self.n_delay))
+    self.state_size = data_structures.NoDependency(
+      [self.units, self.units, self.units, self.units, self.units * self.n_delay])
     self.output_size = self.units
 
   def weight_matrix_with_delay_dimension(self, w, d, n_delay):
@@ -964,14 +964,26 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
     n_in = input_shape[-1]
     n_rec = self.units
 
-    self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
-    self.w_in_var = tf.Variable(self.w_in_init, dtype=self.data_type, name="InputWeight")
+    # self.w_in_init = rd.randn(n_in, n_rec) / np.sqrt(n_in)
+    # self.w_in_var = tf.Variable(self.w_in_init, dtype=self.data_type, name="InputWeight")
+    self.w_in_var = self.add_weight(
+      name="InputWeight", shape=[n_in, n_rec],
+      initializer=self.input_initializer,
+      regularizer=self.input_regularizer,
+      constraint=self.input_constraint,
+    )
     self.w_in_val = self.w_in_var
     self.w_in_delay = tf.Variable(rd.randint(self.n_delay, size=n_in * n_rec).reshape(n_in, n_rec),
                                   dtype=tf.int32, name="InDelays", trainable=False)
     self.W_in = self.weight_matrix_with_delay_dimension(self.w_in_val, self.w_in_delay, self.n_delay)
 
-    self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=self.data_type, name='RecurrentWeight')
+    # self.w_rec_var = tf.Variable(rd.randn(n_rec, n_rec) / np.sqrt(n_rec), dtype=self.data_type, name='RecurrentWeight')
+    self.w_rec_var = self.add_weight(
+      name="RecurrentWeight", shape=[n_rec, n_rec],
+      initializer=self.recurrent_initializer,
+      regularizer=self.recurrent_regularizer,
+      constraint=self.recurrent_constraint,
+    )
     self.w_rec_val = self.w_rec_var
     recurrent_disconnect_mask = np.diag(np.ones(n_rec, dtype=bool))
     self.w_rec_val = tf.where(recurrent_disconnect_mask, tf.zeros_like(self.w_rec_val), self.w_rec_val)
@@ -1009,7 +1021,8 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
 
     i_in = tf.einsum('bi,ijk->bjk', inputs, self.W_in)
     i_rec = tf.einsum('bi,ijk->bjk', z, self.W_rec)
-    i_future_buffer = state.i_future_buffer + i_in + i_rec
+    old_i_future_buffer = tf.reshape(state.i_future_buffer, shape=[-1, self.units, self.n_delay])
+    i_future_buffer = old_i_future_buffer + i_in + i_rec
     i_t = i_future_buffer[:, :, 0] + self.add_current
 
     I_reset = z * thr * self.dt
@@ -1024,7 +1037,7 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
                              0., float(self.n_refractory))
     new_i_future_buffer = self.tf_roll(i_future_buffer, axis=2)
 
-    return new_z, [new_v, new_z, new_b, new_r, new_i_future_buffer]
+    return new_z, [new_v, new_z, new_b, new_r, tf.reshape(new_i_future_buffer, shape=[-1, self.units * self.n_delay])]
 
   def get_config(self):
     config = {
@@ -1058,15 +1071,16 @@ class KerasDelayALIF(DropoutRNNCellMixin, Layer):
     b0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
     r0 = tf.zeros(shape=(batch_size, n_rec), dtype=dtype)
 
-    i_buff0 = tf.zeros(shape=(batch_size, n_rec, self.n_delay), dtype=dtype)
+    i_buff0 = tf.zeros(shape=(batch_size, n_rec * self.n_delay), dtype=dtype)
 
-    return DelayALIFStateTuple(
-      z=z0,
-      v=v0,
-      b=b0,
-      r=r0,
-      i_future_buffer=i_buff0
-    )
+    # return DelayALIFStateTuple(
+    #   z=z0,
+    #   v=v0,
+    #   b=b0,
+    #   r=r0,
+    #   i_future_buffer=i_buff0
+    # )
+    return [v0, z0, b0, r0, i_buff0]
 
 #
 # STPStateTuple = namedtuple('STPState', (
