@@ -19,6 +19,9 @@ Resulting accuracy:
 
 # Default CNN model
 
+CNN model is the default one used in TensorFlow GSC example, which is based on
+`cnn-trad-fpool3` in the ['Convolutional Neural Networks for Small-footprint Keyword Spotting'](http://www.isca-speech.org/archive/interspeech_2015/papers/i15_1478.pdf) paper.
+
 run with:
 
     python3 train.py --model_architecture=conv
@@ -28,6 +31,17 @@ Resulting accuracy:
 | Iteration     | Validation    | Test  |
 | ------------- |:-------------:| -----:|
 | 18000         | 88.4%         | 87.6% |
+
+# Spiking models
+
+
+|          |      BPTT     |  symmetric e-prop |
+|:---------|--------------:|------------------:|
+| ALIF     |        85.1 % |            78.8 % |
+| LIF      |        77.9 % |            70.6 % |
+
+Both ALIF and LIF networks had 2048 fully-connected neurons.
+
 
 # Environment
 
