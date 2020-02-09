@@ -309,14 +309,22 @@ def main(_):
                                      0.0, 0, 'validation', sess))
         # Run a validation step and capture training summaries for TensorBoard
         # with the `merged` op.
-        validation_summary, validation_accuracy, conf_matrix, val_spikes = sess.run(
-            [merged_summaries, evaluation_step, confusion_matrix, spikes],
+        val_nodes = [merged_summaries, evaluation_step, confusion_matrix]
+        if FLAGS.model_architecture == 'lsnn':
+            val_nodes.append(spikes)
+
+        val_nodes_results = sess.run(
+            val_nodes,
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
                 dropout_prob: 1.0,
                 training_placeholder: False,
             })
+        if FLAGS.model_architecture == 'lsnn':
+            validation_summary, validation_accuracy, conf_matrix, val_spikes = val_nodes_results
+        else:
+            validation_summary, validation_accuracy, conf_matrix = val_nodes_results
         validation_writer.add_summary(validation_summary, training_step)
         batch_size = min(FLAGS.batch_size, set_size - i)
         total_accuracy += (validation_accuracy * batch_size) / set_size
@@ -324,16 +332,18 @@ def main(_):
           total_conf_matrix = conf_matrix
         else:
           total_conf_matrix += conf_matrix
-        neuron_rates = np.mean(val_spikes, axis=(0, 1)) * 1000
-        firing_stats = [np.mean(neuron_rates), np.min(neuron_rates), np.max(neuron_rates)]
+        if FLAGS.model_architecture == 'lsnn':
+            neuron_rates = np.mean(val_spikes, axis=(0, 1)) * 1000
+            firing_stats = [np.mean(neuron_rates), np.min(neuron_rates), np.max(neuron_rates)]
+      performance_metrics['val'].append(total_accuracy)
       tf.compat.v1.logging.info('Confusion Matrix:\n %s' % (total_conf_matrix))
       tf.compat.v1.logging.info('Step %d: Validation accuracy = %.1f%% (N=%d)' %
                                 (training_step, total_accuracy * 100, set_size))
-      tf.compat.v1.logging.info('Firing rates: avg %.1f min %.1f max %.1f' %
-                                (firing_stats[0], firing_stats[1], firing_stats[2]))
-      performance_metrics['val'].append(total_accuracy)
-      performance_metrics['firing_rates'].append('avg %.1f min %.1f max %.1f' %
-                                                 (firing_stats[0], firing_stats[1], firing_stats[2]))
+      if FLAGS.model_architecture == 'lsnn':
+          tf.compat.v1.logging.info('Firing rates: avg %.1f min %.1f max %.1f' %
+                                    (firing_stats[0], firing_stats[1], firing_stats[2]))
+          performance_metrics['firing_rates'].append('avg %.1f min %.1f max %.1f' %
+                                                     (firing_stats[0], firing_stats[1], firing_stats[2]))
       with open(os.path.join(FLAGS.summaries_dir, 'performance.json'), 'w') as f:
           json.dump({**performance_metrics, 'flags': {**vars(FLAGS)}}, f, indent=4, sort_keys=True)
 
