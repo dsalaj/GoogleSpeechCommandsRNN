@@ -14,9 +14,9 @@ for subdir, dirs, files in os.walk(results_dir):
         continue
     for f in files:
         if "performance.json" in f:
-            fpath = os.path.join(subdir, f)
-            d = json.load(open(fpath))
             try:
+                fpath = os.path.join(subdir, f)
+                d = json.load(open(fpath))
                 t_err.append(d['test'][-1])
                 v_err.append(d['val'][-1])
                 flags.append(d['flags'])

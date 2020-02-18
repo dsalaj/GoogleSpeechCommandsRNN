@@ -344,8 +344,11 @@ def create_lstm_model(fingerprint_input, model_settings, is_training):
                                       dropout=model_settings['dropout_prob'],
                                       recurrent_dropout=model_settings['dropout_prob'])
              for _ in range(model_settings['n_layer'])]
-    rnn_layer = tf.keras.layers.RNN(cells, return_sequences=False, return_state=False)
+    rnn_layer = tf.keras.layers.RNN(cells, return_sequences=model_settings['avg_spikes'], return_state=False)
     rnn_output = rnn_layer(fingerprint_3d, training=is_training)
+
+    if model_settings['avg_spikes']:
+        rnn_output = tf.reduce_mean(rnn_output, axis=1)
 
     label_count = model_settings['label_count']
     final_fc_weights = tf.compat.v1.get_variable(
@@ -359,6 +362,18 @@ def create_lstm_model(fingerprint_input, model_settings, is_training):
     final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
 
     return final_fc, dropout_prob
+
+
+@tf.custom_gradient
+def BA_logits(rnn_output, W_out, BA_out):
+    logits = tf.matmul(rnn_output, W_out)
+
+    def grad(dy):
+        dloss_dw_out = tf.einsum('bj,bk->jk', rnn_output, dy)
+        dloss_dba_out = tf.zeros_like(BA_out)
+        dloss_dpsp = tf.einsum('bk,jk->bj', dy, BA_out)
+        return [dloss_dpsp, dloss_dw_out, dloss_dba_out]
+    return logits, grad
 
 
 def create_lsnn_model(fingerprint_input, model_settings, is_training):
@@ -408,7 +423,15 @@ def create_lsnn_model(fingerprint_input, model_settings, is_training):
         name='final_fc_bias',
         initializer=tf.compat.v1.zeros_initializer,
         shape=[label_count])
-    final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
+
+    if model_settings['random_eprop']:
+        BA_out = tf.compat.v1.get_variable(
+            name='broadcast_weights',
+            initializer=tf.compat.v1.truncated_normal_initializer(stddev=0.01),
+            shape=[model_settings['n_hidden'], label_count])
+        final_fc = BA_logits(rnn_output, final_fc_weights, BA_out)
+    else:
+        final_fc = tf.matmul(rnn_output, final_fc_weights) + final_fc_bias
 
     return final_fc, rnn_outputs, dropout_prob
 

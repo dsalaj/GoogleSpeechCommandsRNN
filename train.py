@@ -65,6 +65,9 @@ To pull this all together, you'd run:
 bazel run tensorflow/examples/speech_commands:train -- \
 --data_dir=my_wavs --wanted_words=up,down
 
+Best LSNN training runs:
+python3 train.py --model_architecture=lsnn --n_hidden=2048 --window_stride_ms=1. --avg_spikes=True
+
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -113,6 +116,7 @@ def main(_):
   model_settings['n_thr_spikes'] = FLAGS.n_thr_spikes
   model_settings['n_delay'] = FLAGS.n_delay
   model_settings['eprop'] = FLAGS.eprop
+  model_settings['random_eprop'] = FLAGS.random_eprop
   model_settings['avg_spikes'] = FLAGS.avg_spikes
   # model_settings['in_repeat'] = FLAGS.in_repeat
   audio_processor = input_data.AudioProcessor(
@@ -604,6 +608,11 @@ if __name__ == '__main__':
       default=0,
       help='Maximum number of timesteps for synapse delay in LSNN.',)
   parser.add_argument(
+      '--random_eprop',
+      type=bool,
+      default=False,
+      help='Use random eprop for LSNN training')
+  parser.add_argument(
       '--eprop',
       type=bool,
       default=False,
@@ -648,6 +657,8 @@ if __name__ == '__main__':
       help='Optimizer (gradient_descent, momentum, adam)')
 
   FLAGS, unparsed = parser.parse_known_args()
+  if FLAGS.random_eprop:
+      FLAGS.eprop = True
   print(json.dumps(vars(FLAGS), indent=4))
   stored_name = '{}_{}_l{}_h{}_w{}str{}_do{}'.format(
       datetime.now().strftime("%Y%m%d-%H%M%S"),
