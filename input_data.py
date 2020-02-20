@@ -36,6 +36,7 @@ from tensorflow.python.ops import gen_audio_ops as audio_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
+from python_speech_features import fbank
 
 tf.compat.v1.disable_eager_execution()
 
@@ -453,6 +454,26 @@ class AudioProcessor(object):
         tf.compat.v1.summary.image('shrunk_spectrogram',
                                    self.output_,
                                    max_outputs=1)
+      elif model_settings['preprocess'] == 'fbank':
+        # We just convert the data back to int16 wav format
+        # and the actual filterbank processing is performed outside of tensorflow graph
+        # in the get_data function
+        int16_input = tf.cast(tf.multiply(background_clamp, 32768), tf.int16)
+        # def compute_fbs(int16_wav_input):
+        #     fbs, energy = fbank(int16_wav_input, model_settings['sample_rate'],
+        #                         nfilt=model_settings['fingerprint_width'],
+        #                         winstep=model_settings['window_stride_samples'] / model_settings['sample_rate'],
+        #                         winlen=model_settings['window_size_samples'] / model_settings['sample_rate'],
+        #                         nfft=1024,
+        #                         lowfreq=64)
+        #     fbs = np.log(fbs)
+        #     energy = np.log(energy)
+        #     return np.concatenate([fbs, energy[:, None]], axis=1)
+        #
+        # log_fbs_with_energy = compute_fbs(int16_input)
+        self.output_ = int16_input
+        # tf.compat.v1.summary.image(
+        #     'fbank', tf.expand_dims(self.output_, -1), max_outputs=1)
       elif model_settings['preprocess'] == 'mfcc':
         self.output_ = audio_ops.mfcc(
             spectrogram,
@@ -605,6 +626,28 @@ class AudioProcessor(object):
       # Run the graph to produce the output audio.
       summary, data_tensor = sess.run(
           [self.merged_summaries_, self.output_], feed_dict=input_dict)
+
+      if model_settings['preprocess'] == 'fbank':
+        def compute_fbs(int16_wav_input):
+          fbs, energy = fbank(int16_wav_input, model_settings['sample_rate'],
+                              nfilt=int(model_settings['fingerprint_width'] / 3) - 1,
+                              winstep=model_settings['window_stride_samples'] / model_settings['sample_rate'],
+                              winlen=model_settings['window_size_samples'] / model_settings['sample_rate'],
+                              nfft=1024,
+                              lowfreq=64)
+          fbs = np.log(fbs)
+          energy = np.log(energy)
+          features = np.concatenate([fbs, energy[:, None]], axis=1)
+          # add derivatives:
+          get_delta = lambda v: np.concatenate(
+              [np.zeros((1, v.shape[1])), v[2:] - v[:-2], np.zeros((1, v.shape[1]))], axis=0)
+          d_features = get_delta(features)
+          d2_features = get_delta(d_features)
+
+          return np.concatenate([features, d_features, d2_features], axis=1)
+
+        data_tensor = compute_fbs(data_tensor)
+
       self.summary_writer_.add_summary(summary)
       data[i - offset, :] = data_tensor.flatten()
       label_index = self.word_to_index[sample['label']]

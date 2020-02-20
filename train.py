@@ -475,7 +475,7 @@ if __name__ == '__main__':
       '--feature_bin_count',
       type=int,
       default=40,
-      help='How many bins to use for the MFCC fingerprint',
+      help='How many bins to use for the MFCC / FBANK fingerprint',
   )
   parser.add_argument(
       '--how_many_training_steps',
