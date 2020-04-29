@@ -429,11 +429,34 @@ class AudioProcessor(object):
       background_add = tf.add(background_mul, sliced_foreground)
       background_clamp = tf.clip_by_value(background_add, -1.0, 1.0)
       # Run the spectrogram and MFCC ops to get a 2D 'fingerprint' of the audio.
-      spectrogram = audio_ops.audio_spectrogram(
-          background_clamp,
-          window_size=model_settings['window_size_samples'],
-          stride=model_settings['window_stride_samples'],
-          magnitude_squared=True)
+
+
+
+
+
+      # spectrogram = audio_ops.audio_spectrogram(
+      #     background_clamp,
+      #     window_size=model_settings['window_size_samples'],
+      #     stride=model_settings['window_stride_samples'],
+      #     magnitude_squared=True)
+
+      def periodic_hann_window(window_length, dtype):
+        return 0.5 - 0.5 * tf.math.cos(
+          2.0 * np.pi * tf.range(tf.cast(window_length, dtype=dtype), dtype=dtype) / tf.cast(window_length, dtype=dtype))
+
+      signal_stft = tf.signal.stft(tf.transpose(background_clamp, [1, 0]),
+                                   frame_length=model_settings['window_size_samples'],
+                                   frame_step=model_settings['window_stride_samples'],
+                                   window_fn=periodic_hann_window)
+      signal_spectrograms = tf.abs(signal_stft)
+      spectrogram = signal_spectrograms
+
+
+
+
+
+
+
       tf.compat.v1.summary.image(
           'spectrogram', tf.expand_dims(spectrogram, -1), max_outputs=1)
       # The number of buckets in each FFT row in the spectrogram will depend on
@@ -475,10 +498,40 @@ class AudioProcessor(object):
         # tf.compat.v1.summary.image(
         #     'fbank', tf.expand_dims(self.output_, -1), max_outputs=1)
       elif model_settings['preprocess'] == 'mfcc':
-        self.output_ = audio_ops.mfcc(
-            spectrogram,
-            wav_decoder.sample_rate,
-            dct_coefficient_count=model_settings['fingerprint_width'])
+
+        # signal_mfccs = audio_ops.mfcc(
+        #     spectrogram,
+        #     # tf.expand_dims(signal_spectrograms, 0),
+        #     wav_decoder.sample_rate,
+        #     dct_coefficient_count=model_settings['fingerprint_width'])
+        #
+        # self.output_ = signal_mfccs
+        # print("OLD", signal_mfccs.shape)
+
+
+        num_spectrogram_bins = signal_stft.shape[-1]
+
+        num_mel_bins = num_mfccs = model_settings['fingerprint_width']
+        lower_edge_hertz = 20.0
+        upper_edge_hertz = 4000.0
+        log_noise_floor = 1e-12
+        linear_to_mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
+          num_mel_bins, num_spectrogram_bins,
+          model_settings['sample_rate'],
+          # lower_edge_hertz, upper_edge_hertz
+        )
+        mel_spectrograms = tf.tensordot(spectrogram, linear_to_mel_weight_matrix, 1)
+        mel_spectrograms.set_shape(mel_spectrograms.shape[:-1].concatenate(linear_to_mel_weight_matrix.shape[-1:]))
+
+        log_mel_spectrograms = tf.math.log(mel_spectrograms + log_noise_floor)
+        signal_mfccs = tf.signal.mfccs_from_log_mel_spectrograms(log_mel_spectrograms)[..., :num_mfccs]
+        # print("NEW", signal_mfccs.shape)
+
+        self.output_ = signal_mfccs
+
+
+
+
         tf.compat.v1.summary.image(
             'mfcc', tf.expand_dims(self.output_, -1), max_outputs=1)
       elif model_settings['preprocess'] == 'micro':
