@@ -545,7 +545,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--n_hidden',
       type=int,
-      default=1024,
+      default=2048,
       help='Number of hidden units in recurrent models.')
   parser.add_argument(
       '--n_layer',
@@ -620,7 +620,7 @@ if __name__ == '__main__':
   parser.add_argument(
       '--avg_spikes',
       type=bool,
-      default=False,
+      default=True,
       help='Average spikes over time for readout')
 
   # Function used to parse --verbosity argument
