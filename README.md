@@ -1,9 +1,20 @@
 # Speech Commands Example
 
-This is a basic speech recognition example. For more information, see the
+This is a basic speech recognition example using recurrent neural networks. For more information, see the
 tutorial at https://www.tensorflow.org/tutorials/sequences/audio_recognition.
 
-# Added LSTM model
+# Spiking model LSNN
+
+Based on the recurrent Long short-term Spiking Neural Network model from the paper:
+
+    Salaj, D., Subramoney, A., Kraisnikovic, C., Bellec, G., Legenstein, R. and Maass, W., 2020. Spike-frequency adaptation provides a long short-term memory to networks of spiking neurons. [bioRxiv](https://www.biorxiv.org/content/10.1101/2020.05.11.081513v1.abstract).
+
+To reproduce result from the paper (91.2% test accuracy) run the following commands:
+
+    python3 train.py --model_architecture=lsnn --window_stride_ms=1
+
+
+# LSTM model
 
 run with:
 
@@ -31,17 +42,6 @@ Resulting accuracy:
 | Iteration     | Validation    | Test  |
 | ------------- |:-------------:| -----:|
 | 18000         | 88.4%         | 87.6% |
-
-# Spiking models
-
-
-|          |      BPTT     |  symmetric e-prop |
-|:---------|--------------:|------------------:|
-| ALIF     |        85.1 % |            78.8 % |
-| LIF      |        77.9 % |            70.6 % |
-
-Both ALIF and LIF networks had 2048 fully-connected neurons.
-
 
 # Environment
 
