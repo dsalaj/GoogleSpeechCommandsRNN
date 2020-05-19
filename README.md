@@ -7,7 +7,8 @@ tutorial at https://www.tensorflow.org/tutorials/sequences/audio_recognition.
 
 Based on the recurrent Long short-term Spiking Neural Network model from the paper:
 
-    Salaj, D., Subramoney, A., Kraisnikovic, C., Bellec, G., Legenstein, R. and Maass, W., 2020. Spike-frequency adaptation provides a long short-term memory to networks of spiking neurons. [bioRxiv](https://www.biorxiv.org/content/10.1101/2020.05.11.081513v1.abstract).
+> Salaj, D., Subramoney, A., Kraisnikovic, C., Bellec, G., Legenstein, R. and Maass, W., 2020.  
+> [*Spike-frequency adaptation provides a long short-term memory to networks of spiking neurons*. bioRxiv](https://www.biorxiv.org/content/10.1101/2020.05.11.081513v1.abstract).
 
 To reproduce result from the paper (91.2% test accuracy) run the following commands:
 
