@@ -1,9 +1,9 @@
-# Speech Commands Dataset
+# Speech Commands Dataset 🗣️
 
 This is a basic speech recognition example using recurrent neural networks. For more information, see the
 tutorial at https://www.tensorflow.org/tutorials/sequences/audio_recognition.
 
-# Spiking model LSNN
+# Spiking model LSNN 🧠
 
 This model implements the recurrent Long short-term Spiking Neural Network (LSNN) and reproduces the Google Speech Commands results from the paper:
 
@@ -30,7 +30,7 @@ Resulting accuracy:
 | 4800          | 87.5%         |       |
 | 18000         | 91.5%         | 91.2% |
 
-# LSTM model
+# LSTM model 🤖
 
 run with:
 
