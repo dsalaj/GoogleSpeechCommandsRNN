@@ -61,4 +61,10 @@ Resulting accuracy:
 
 # Environment
 
-tested on `tensorflow-gpu==2.0.0`
+Tested with TensorFlow `2.0` and `2.1`.
+
+To get started create the conda environment from file and activate:
+
+    conda env create -f environment.yml
+    conda activate venv2.1
+    python3 train.py --model_architecture=lsnn --window_stride_ms=1
