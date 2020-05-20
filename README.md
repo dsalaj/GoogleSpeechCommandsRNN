@@ -1,11 +1,11 @@
-# Speech Commands Example
+# Speech Commands Dataset
 
 This is a basic speech recognition example using recurrent neural networks. For more information, see the
 tutorial at https://www.tensorflow.org/tutorials/sequences/audio_recognition.
 
 # Spiking model LSNN
 
-Based on the recurrent Long short-term Spiking Neural Network model from the paper:
+This model implements the recurrent Long short-term Spiking Neural Network (LSNN) and reproduces the Google Speech Commands results from the paper:
 
 > Salaj, D., Subramoney, A., Kraisnikovic, C., Bellec, G., Legenstein, R. and Maass, W., 2020.  
 > [*Spike-frequency adaptation provides a long short-term memory to networks of spiking neurons*. bioRxiv](https://www.biorxiv.org/content/10.1101/2020.05.11.081513v1.abstract).
@@ -14,6 +14,11 @@ To reproduce result from the paper (91.2% test accuracy) run the following comma
 
     python3 train.py --model_architecture=lsnn --window_stride_ms=1
 
+The details that allow spiking network to achieve the high accuracy are:
+
+- Spiking network is able to exploit the higher temporal resolution of the input so we use `--window_stride_ms=1`
+- For classification we consider the output of spiking network throught the sequence `--avg_spikes=True`
+- We use larger number of neurons `--n_hidden=2048`
 
 # LSTM model
 
