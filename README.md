@@ -20,6 +20,16 @@ The details that allow spiking network to achieve the high accuracy are:
 - For classification we consider the output of spiking network throught the sequence `--avg_spikes=True`
 - We use larger number of neurons `--n_hidden=2048`
 
+Resulting accuracy:
+
+| Iteration     | Validation    | Test  |
+| ------------- |:-------------:| -----:|
+| 400           | 68.6%         |       |
+| 1200          | 79.4%         |       |
+| 2400          | 85.3%         |       |
+| 4800          | 87.5%         |       |
+| 18000         | 91.5%         | 91.2% |
+
 # LSTM model
 
 run with:
