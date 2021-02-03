@@ -1,7 +1,10 @@
 # Speech Commands Dataset 🗣️
 
-This is a basic speech recognition example using recurrent neural networks. For more information, see the
-tutorial at https://www.tensorflow.org/tutorials/sequences/audio_recognition.
+This is a speech recognition example using spiking and artificial recurrent neural networks.
+
+Check out this awesome demonstration built by Tim Shea at Accenture using Intel Kapaho Bay:
+
+  https://vimeo.com/intelpr/review/486105332/2b3ac2e263
 
 # Spiking model LSNN 🧠
 
